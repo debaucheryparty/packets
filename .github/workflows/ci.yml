@@ -16,7 +16,6 @@ jobs:
 
       - name: Install tools
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
           go install mvdan.cc/gofumpt@latest
 
       - name: Check formatting
@@ -25,7 +24,9 @@ jobs:
           test -z "$(gofumpt -l .)"
 
       - name: Lint
-        run: golangci-lint run
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.60.3
 
       - name: Test
         run: go test ./... -race
