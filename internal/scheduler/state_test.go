@@ -1,8 +1,9 @@
 package scheduler
 
 import (
-	"github.com/waris4ly/packets/pkg/apitypes"
 	"testing"
+
+	"github.com/waris4ly/packets/pkg/apitypes"
 )
 
 func TestStateMachine(t *testing.T) {

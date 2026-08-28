@@ -7,9 +7,7 @@ import (
 	"github.com/waris4ly/packets/pkg/apitypes"
 )
 
-var (
-	ErrInvalidStateTransition = errors.New("invalid state transition")
-)
+var ErrInvalidStateTransition = errors.New("invalid state transition")
 
 type StateMachine struct{}
 
