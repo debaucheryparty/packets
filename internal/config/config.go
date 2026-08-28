@@ -29,7 +29,12 @@ type Config struct {
 }
 
 func LoadConfig(ctx context.Context) (*Config, error) {
-	_ = godotenv.Load("/etc/packets/env", ".env", ".env.local")
+	home, _ := os.UserHomeDir()
+	globalConfig := ""
+	if home != "" {
+		globalConfig = home + "/.packets/config.env"
+	}
+	_ = godotenv.Load(".env.local", ".env", globalConfig, "/etc/packets/env")
 
 	cfg := &Config{
 		TailscaleAuthKey:      os.Getenv("TAILSCALE_AUTH_KEY"),
