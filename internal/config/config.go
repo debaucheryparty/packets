@@ -26,6 +26,7 @@ type Config struct {
 	CircleCIToken         string
 	CircleCIProjectSlug   string
 	LogLevel              string
+	DirectCIMode          bool
 }
 
 func LoadConfig(ctx context.Context) (*Config, error) {
@@ -53,6 +54,7 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 		CircleCIToken:         os.Getenv("CIRCLECI_TOKEN"),
 		CircleCIProjectSlug:   os.Getenv("CIRCLECI_PROJECT_SLUG"),
 		LogLevel:              os.Getenv("LOG_LEVEL"),
+		DirectCIMode:          os.Getenv("DIRECT_CI_MODE") == "true" || os.Getenv("DIRECT_CI_MODE") == "1",
 	}
 
 	if cfg.SchedulerGRPCPort == "" {

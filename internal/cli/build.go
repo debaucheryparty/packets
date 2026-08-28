@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/waris4ly/packets/internal/config"
+	"github.com/waris4ly/packets/internal/provider"
 	"github.com/waris4ly/packets/internal/shim"
 	"github.com/waris4ly/packets/internal/storage"
 	"github.com/waris4ly/packets/internal/toolchain"
@@ -46,6 +47,30 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			}
 
 			remoteCall := func(callCtx context.Context) error {
+				if cfg.DirectCIMode {
+					logger.InfoContext(callCtx, "Direct-CI mode enabled, bypassing scheduler and dispatching directly to GitHub Actions")
+					if cfg.GitHubActionsToken == "" || cfg.GitHubActionsRepo == "" {
+						return fmt.Errorf("GitHub Actions credentials missing for Direct-CI mode")
+					}
+					cacheKey, _ := GenerateCacheKey(callCtx, pwd, string(def.Name))
+					job := apitypes.Job{
+						ID:          apitypes.JobID(fmt.Sprintf("job_%d", time.Now().UnixNano())),
+						Toolchain:   def.Name,
+						CacheKey:    cacheKey,
+						Provider:    apitypes.ProviderGitHubActions,
+						State:       apitypes.JobStatePending,
+					}
+					
+					ghProvider := provider.NewGitHubActions(logger, cfg.GitHubActionsToken, cfg.GitHubActionsRepo)
+					_, err := ghProvider.Dispatch(callCtx, job)
+					if err != nil {
+						return fmt.Errorf("direct CI dispatch failed: %w", err)
+					}
+					
+					logger.InfoContext(callCtx, "Direct CI job dispatched successfully (fire-and-forget)")
+					return nil
+				}
+
 				if target.Backend == apitypes.BackendScheduler {
 					return executeViaScheduler(callCtx, cfg, logger, def, pwd, args)
 				}
