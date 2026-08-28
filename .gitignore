@@ -1,0 +1,32 @@
+bin/
+.env
+deploy/local.env
+*.db
+*.db-journal
+*.log
+.DS_Store
+
+# Packets specific
+CLAUDE.md
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+Thumbs.db
+.Spotlight-V100
+.Trashes

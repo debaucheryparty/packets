@@ -1,0 +1,34 @@
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - gofmt
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - gosimple
+    - unconvert
+    - unparam
+    - misspell
+    - goimports
+    - nolintlint
+    - errorlint
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/waris4ly/packets
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0

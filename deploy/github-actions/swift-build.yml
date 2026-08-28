@@ -1,0 +1,23 @@
+name: Packets Swift Build
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: 'Packets Job ID'
+        required: true
+      cache_key:
+        description: 'Build cache key'
+        required: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+
+      - name: Build
+        run: swift build

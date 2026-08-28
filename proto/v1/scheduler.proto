@@ -1,0 +1,57 @@
+syntax = "proto3";
+package packets.v1;
+
+option go_package = "github.com/waris4ly/packets/proto/v1";
+
+service Scheduler {
+  rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
+  rpc GetJobStatus(GetJobStatusRequest) returns (GetJobStatusResponse);
+  rpc StreamJobLogs(StreamJobLogsRequest) returns (stream JobLogLine);
+  rpc ClearCache(ClearCacheRequest) returns (ClearCacheResponse);
+}
+
+message ClearCacheRequest {
+  string toolchain = 1;
+}
+
+message ClearCacheResponse {
+  int32 cleared_count = 1;
+}
+
+message SubmitJobRequest {
+  string cache_key = 1;
+  string toolchain = 2;
+  bytes build_manifest = 3;
+  string docker_image = 4;
+}
+
+message SubmitJobResponse {
+  string job_id = 1;
+  bool cache_hit = 2;
+}
+
+message GetJobStatusRequest {
+  string job_id = 1;
+}
+
+message GetJobStatusResponse {
+  JobState state = 1;
+  string artifact_ref = 2;
+  string error_message = 3;
+}
+
+message StreamJobLogsRequest {
+  string job_id = 1;
+}
+
+message JobLogLine {
+  string content = 1;
+}
+
+enum JobState {
+  JOB_STATE_UNSPECIFIED = 0;
+  JOB_STATE_PENDING = 1;
+  JOB_STATE_RUNNING = 2;
+  JOB_STATE_SUCCEEDED = 3;
+  JOB_STATE_FAILED = 4;
+}
