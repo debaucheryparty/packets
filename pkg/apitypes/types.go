@@ -2,34 +2,24 @@ package apitypes
 
 import "time"
 
-type JobID string
-
-type Job struct {
-	ID          JobID
-	Toolchain   Toolchain
-	CacheKey    string
-	State       JobState
-	Provider    ProviderName
-	SubmittedAt time.Time
-	CompletedAt *time.Time
-	ArtifactRef ArtifactRef
-}
-
 type JobState int
 
 const (
-	JobStatePending JobState = iota
-	JobStateDispatched
-	JobStateRunning
-	JobStateSucceeded
-	JobStateFailed
-	JobStateFallbackLocal
+	JobStatePending       JobState = 0
+	JobStateUploading     JobState = 1
+	JobStateDispatched    JobState = 2
+	JobStateRunning       JobState = 3
+	JobStateSucceeded     JobState = 4
+	JobStateFailed        JobState = 5
+	JobStateFallbackLocal JobState = 6
 )
 
 func (s JobState) String() string {
 	switch s {
 	case JobStatePending:
 		return "pending"
+	case JobStateUploading:
+		return "uploading"
 	case JobStateDispatched:
 		return "dispatched"
 	case JobStateRunning:
@@ -44,6 +34,33 @@ func (s JobState) String() string {
 		return "unknown"
 	}
 }
+
+func (s JobState) IsTerminal() bool {
+	return s == JobStateSucceeded || s == JobStateFailed || s == JobStateFallbackLocal
+}
+
+type RunnerName string
+
+const (
+	RunnerDocker   RunnerName = "docker"
+	RunnerGitHub   RunnerName = "github"
+	RunnerLocal    RunnerName = "local"
+	RunnerCircleCI RunnerName = "circleci"
+)
+
+type RunnerDef struct {
+	Name           RunnerName
+	DisplayName    string
+	RequiresUpload bool
+	RequiresGit    bool
+}
+
+type SourceMode string
+
+const (
+	SourceModeWorkspace SourceMode = "workspace"
+	SourceModeGit       SourceMode = "git"
+)
 
 type ProviderName string
 
@@ -119,22 +136,63 @@ func (b Backend) String() string {
 }
 
 type ToolchainDef struct {
-	Name         Toolchain
-	DisplayName  string
-	DetectFiles  []string
-	DetectDirs   []string
-	Backend      Backend
-	LocalCommand string
-	DefaultArgs  []string
-	DockerImage  string
+	Name             Toolchain
+	DisplayName      string
+	DetectFiles      []string
+	DetectDirs       []string
+	Backend          Backend
+	LocalCommand     string
+	DefaultArgs      []string
+	DockerImage      string
+	DefaultArtifacts []string
+}
+
+type WorkspaceManifest struct {
+	RootHash string          `json:"root_hash"`
+	Files    []WorkspaceFile `json:"files"`
+}
+
+type WorkspaceFile struct {
+	Path  string `json:"path"`
+	Hash  string `json:"hash"`
+	Size  int64  `json:"size"`
+	Mode  uint32 `json:"mode"`
+	IsDir bool   `json:"is_dir"`
+	Link  string `json:"link,omitempty"`
+}
+
+type JobID string
+
+type Job struct {
+	ID            JobID
+	Toolchain     Toolchain
+	CacheKey      string
+	State         JobState
+	Provider      ProviderName
+	Runner        RunnerName
+	SourceMode    SourceMode
+	SnapshotRef   string
+	CommandArgs   []string
+	ArtifactPaths []string
+	Image         string
+	Error         string
+	Owner         string
+	SubmittedAt   time.Time
+	CompletedAt   *time.Time
+	ArtifactRef   ArtifactRef
 }
 
 type BuildRequest struct {
-	JobID       JobID
-	Directory   string
-	Toolchain   Toolchain
-	Args        []string
-	DockerImage string
+	JobID         JobID
+	Directory     string
+	Toolchain     Toolchain
+	Args          []string
+	DockerImage   string
+	Runner        RunnerName
+	SourceMode    SourceMode
+	SnapshotRef   string
+	CommandArgs   []string
+	ArtifactPaths []string
 }
 
 type BuildInputs struct {
@@ -142,6 +200,14 @@ type BuildInputs struct {
 	FileHashes      map[string]string
 	CompilerVersion string
 	EnvVars         map[string]string
+}
+
+type ExecutionResult struct {
+	ExitCode    int
+	Stdout      string
+	Stderr      string
+	ArtifactRef ArtifactRef
+	Error       error
 }
 
 type ArtifactRef string

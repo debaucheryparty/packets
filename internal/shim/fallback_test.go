@@ -5,10 +5,18 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/waris4ly/packets/pkg/apitypes"
 )
+
+func noopCommand() (string, []string) {
+	if runtime.GOOS == "windows" {
+		return "cmd", []string{"/c", "exit", "/b", "0"}
+	}
+	return "true", nil
+}
 
 func TestFallbackRunner(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -20,9 +28,11 @@ func TestFallbackRunner(t *testing.T) {
 		return errors.New("remote failed")
 	}
 
+	cmd, args := noopCommand()
 	def := apitypes.ToolchainDef{
 		Name:         "test",
-		LocalCommand: "true", // standard unix true
+		LocalCommand: cmd,
+		DefaultArgs:  args,
 	}
 
 	err := runner.ExecuteWithFallback(context.Background(), def, ".", nil, remoteCall)
@@ -44,9 +54,11 @@ func TestFallbackRunner_Timeout(t *testing.T) {
 		return context.DeadlineExceeded
 	}
 
+	cmd, args := noopCommand()
 	def := apitypes.ToolchainDef{
 		Name:         "test",
-		LocalCommand: "true",
+		LocalCommand: cmd,
+		DefaultArgs:  args,
 	}
 
 	err := runner.ExecuteWithFallback(context.Background(), def, ".", nil, remoteCall)

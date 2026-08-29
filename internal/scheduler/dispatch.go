@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/waris4ly/packets/internal/provider"
 	"github.com/waris4ly/packets/internal/storage"
+	"github.com/waris4ly/packets/internal/worker"
 	"github.com/waris4ly/packets/pkg/apitypes"
 )
 
@@ -17,105 +17,145 @@ type Dispatcher struct {
 	logger       *slog.Logger
 	store        *storage.JobStore
 	stateMachine *StateMachine
-	queue        *storage.NATSQueue
 	providers    map[apitypes.ProviderName]provider.BuildProvider
+	executor     *worker.Executor
+	limiter      *QuotaLimiter
+	logBroker    *LogBroker
 }
 
-func NewDispatcher(logger *slog.Logger, store *storage.JobStore, queue *storage.NATSQueue, providers map[apitypes.ProviderName]provider.BuildProvider) *Dispatcher {
+func NewDispatcher(logger *slog.Logger, store *storage.JobStore, providers map[apitypes.ProviderName]provider.BuildProvider, executor *worker.Executor, limiter *QuotaLimiter, logBroker *LogBroker) *Dispatcher {
 	return &Dispatcher{
 		logger:       logger,
 		store:        store,
 		stateMachine: NewStateMachine(),
-		queue:        queue,
 		providers:    providers,
+		executor:     executor,
+		limiter:      limiter,
+		logBroker:    logBroker,
 	}
 }
 
-func (d *Dispatcher) Submit(ctx context.Context, req apitypes.BuildRequest, cacheKey string) (apitypes.JobID, bool, error) {
-	// check cache first
+func (d *Dispatcher) Submit(ctx context.Context, req apitypes.BuildRequest, cacheKey, owner string) (apitypes.JobID, bool, error) {
 	if ref, hit, err := d.store.Lookup(ctx, cacheKey); err == nil && hit {
 		d.logger.InfoContext(ctx, "cache hit", slog.String("cache_key", cacheKey), slog.String("ref", string(ref)))
 		JobsSubmittedTotal.WithLabelValues(string(req.Toolchain), "true").Inc()
-		return apitypes.JobID(fmt.Sprintf("hit_%s", cacheKey)), true, nil
-	} else if err != nil {
-		d.logger.WarnContext(ctx, "cache lookup failed, proceeding to build", slog.String("err", err.Error()))
+
+		cachedJob := apitypes.Job{
+			ID:          apitypes.JobID(fmt.Sprintf("cached_%s", cacheKey[:8])),
+			State:       apitypes.JobStateSucceeded,
+			Toolchain:   req.Toolchain,
+			CacheKey:    cacheKey,
+			ArtifactRef: ref,
+			Owner:       owner,
+			SubmittedAt: time.Now().UTC(),
+		}
+		_ = d.store.CreateJob(ctx, cachedJob)
+		return cachedJob.ID, true, nil
+	}
+
+	if d.limiter != nil {
+		if err := d.limiter.Acquire(owner); err != nil {
+			return "", false, err
+		}
 	}
 
 	jobID := apitypes.JobID(fmt.Sprintf("j_%s", uuid.New().String()[:8]))
 
-	providerName := apitypes.ProviderDockerWorker
-	if req.Toolchain == apitypes.ToolchainSwift || req.Toolchain == apitypes.ToolchainObjC || req.Toolchain == apitypes.ToolchainFlutter {
-		providerName = apitypes.ProviderGitHubActions
+	runner := req.Runner
+	if runner == "" {
+		runner = apitypes.RunnerDocker
 	}
 
 	job := apitypes.Job{
-		ID:          jobID,
-		Toolchain:   req.Toolchain,
-		CacheKey:    cacheKey,
-		State:       apitypes.JobStatePending,
-		Provider:    providerName,
-		SubmittedAt: time.Now().UTC(),
+		ID:            jobID,
+		Toolchain:     req.Toolchain,
+		CacheKey:      cacheKey,
+		State:         apitypes.JobStatePending,
+		Runner:        runner,
+		SourceMode:    req.SourceMode,
+		SnapshotRef:   req.SnapshotRef,
+		CommandArgs:   req.CommandArgs,
+		ArtifactPaths: req.ArtifactPaths,
+		Image:         req.DockerImage,
+		Owner:         owner,
+		SubmittedAt:   time.Now().UTC(),
 	}
 
 	if err := d.store.CreateJob(ctx, job); err != nil {
+		if d.limiter != nil {
+			d.limiter.Release(owner)
+		}
 		return "", false, fmt.Errorf("Dispatcher.Submit create: %w", err)
 	}
 
 	JobsSubmittedTotal.WithLabelValues(string(req.Toolchain), "false").Inc()
-
-	payload, _ := json.Marshal(JobPayload{Job: job, Req: req})
-	if d.queue != nil {
-		if err := d.queue.Publish(ctx, "jobs.pending", payload); err != nil {
-			d.logger.ErrorContext(ctx, "failed to publish job to queue, falling back to synchronous execution", slog.String("error", err.Error()))
-			go d.dispatchAsync(context.Background(), job, req)
-		}
-	} else {
-		go d.dispatchAsync(context.Background(), job, req)
-	}
+	go d.dispatchAsync(context.Background(), job, req)
 
 	return jobID, false, nil
 }
 
 func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req apitypes.BuildRequest) {
-	p, ok := d.providers[job.Provider]
-	if !ok {
-		d.logger.ErrorContext(ctx, "provider not found", slog.String("provider", string(job.Provider)))
-		_ = d.updateState(ctx, job.ID, apitypes.JobStateFailed, apitypes.JobStatePending)
-		JobsFailedTotal.WithLabelValues(string(job.Toolchain), string(job.Provider)).Inc()
-		return
-	}
+	defer func() {
+		if d.limiter != nil {
+			d.limiter.Release(job.Owner)
+		}
+		if d.logBroker != nil {
+			d.logBroker.CloseJob(job.ID)
+		}
+	}()
 
 	_ = d.updateState(ctx, job.ID, apitypes.JobStateDispatched, apitypes.JobStatePending)
 
-	// dispatch to CI provider or docker worker
-	_, err := p.Dispatch(ctx, job)
-	if err != nil {
-		d.logger.ErrorContext(ctx, "dispatch failed",
-			slog.String("job_id", string(job.ID)),
-			slog.String("provider", string(job.Provider)),
-			slog.String("error", err.Error()),
-		)
-		JobsFailedTotal.WithLabelValues(string(job.Toolchain), string(job.Provider)).Inc()
-
-		if job.Provider == apitypes.ProviderGitHubActions && errorsIs(err, provider.ErrProviderExhausted) {
-			d.logger.WarnContext(ctx, "primary provider exhausted, failing over to circleci", slog.String("job_id", string(job.ID)))
-
-			fallbackJob := job
-			fallbackJob.Provider = apitypes.ProviderCircleCI
-			if fallbackProvider, fallbackOk := d.providers[apitypes.ProviderCircleCI]; fallbackOk {
-				if _, fallbackErr := fallbackProvider.Dispatch(ctx, fallbackJob); fallbackErr == nil {
-					return
-				} else {
-					d.logger.ErrorContext(ctx, "fallback provider also failed", slog.String("error", fallbackErr.Error()))
-				}
+	switch job.Runner {
+	case apitypes.RunnerDocker:
+		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
+		result, err := d.executor.Execute(ctx, job)
+		if err != nil || result.ExitCode != 0 {
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			} else {
+				errMsg = fmt.Sprintf("exited %d: %s", result.ExitCode, result.Stderr)
 			}
+			_ = d.store.FailJob(ctx, job.ID, errMsg)
+			JobsFailedTotal.WithLabelValues(string(job.Toolchain), string(job.Runner)).Inc()
+			return
+		}
+		if err := d.store.CompleteJob(ctx, job.ID, result.ArtifactRef, job.CacheKey); err != nil {
+			d.logger.ErrorContext(ctx, "CompleteJob failed", slog.String("job_id", string(job.ID)), slog.String("err", err.Error()))
 		}
 
-		_ = d.updateState(ctx, job.ID, apitypes.JobStateFallbackLocal, apitypes.JobStateDispatched)
-		return
-	}
+	case apitypes.RunnerGitHub:
+		p, ok := d.providers[apitypes.ProviderGitHubActions]
+		if !ok {
+			_ = d.store.FailJob(ctx, job.ID, "github provider not configured")
+			return
+		}
+		if _, err := p.Dispatch(ctx, job); err != nil {
+			_ = d.store.FailJob(ctx, job.ID, err.Error())
+			JobsFailedTotal.WithLabelValues(string(job.Toolchain), string(job.Runner)).Inc()
+			return
+		}
+		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
 
-	_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
+	case apitypes.RunnerLocal:
+		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
+		result, err := d.executor.Execute(ctx, job)
+		if err != nil || result.ExitCode != 0 {
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			} else {
+				errMsg = fmt.Sprintf("exited %d", result.ExitCode)
+			}
+			_ = d.store.FailJob(ctx, job.ID, errMsg)
+			return
+		}
+		_ = d.store.CompleteJob(ctx, job.ID, result.ArtifactRef, job.CacheKey)
+
+	default:
+		_ = d.store.FailJob(ctx, job.ID, fmt.Sprintf("unknown runner: %s", job.Runner))
+	}
 }
 
 func (d *Dispatcher) updateState(ctx context.Context, id apitypes.JobID, to, from apitypes.JobState) error {
@@ -126,6 +166,23 @@ func (d *Dispatcher) updateState(ctx context.Context, id apitypes.JobID, to, fro
 	return d.store.UpdateJobState(ctx, id, to)
 }
 
-func errorsIs(err, target error) bool {
-	return err.Error() == target.Error()
+func (d *Dispatcher) RecoverPendingJobs(ctx context.Context) error {
+	jobs, err := d.store.ListJobsByState(ctx, apitypes.JobStatePending, apitypes.JobStateDispatched)
+	if err != nil {
+		return fmt.Errorf("RecoverPendingJobs: %w", err)
+	}
+	for _, job := range jobs {
+		go func(j apitypes.Job) {
+			d.dispatchAsync(ctx, j, apitypes.BuildRequest{
+				Toolchain:     j.Toolchain,
+				Runner:        j.Runner,
+				SourceMode:    j.SourceMode,
+				SnapshotRef:   j.SnapshotRef,
+				CommandArgs:   j.CommandArgs,
+				ArtifactPaths: j.ArtifactPaths,
+				DockerImage:   j.Image,
+			})
+		}(job)
+	}
+	return nil
 }

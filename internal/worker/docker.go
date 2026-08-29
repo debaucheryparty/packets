@@ -2,11 +2,34 @@ package worker
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os/exec"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 )
+
+type RunOpts struct {
+	Image       string
+	MountPath   string
+	Command     []string
+	Env         []string
+	Timeout     time.Duration
+	MemoryLimit string
+	CPULimit    string
+	LogFunc     func(string)
+}
+
+type RunResult struct {
+	ExitCode int
+	Stdout   string
+	Stderr   string
+}
 
 type DockerClient struct {
 	logger *slog.Logger
@@ -24,39 +47,126 @@ func (d *DockerClient) PullImage(ctx context.Context, image string) error {
 	return nil
 }
 
-func (d *DockerClient) RunContainer(ctx context.Context, image, workdir string, args []string) (string, error) {
-	cmdArgs := []string{"run", "-d", "--rm", "-v", fmt.Sprintf("%s:/workspace", workdir), "-w", "/workspace", image}
-	cmdArgs = append(cmdArgs, args...)
+func (d *DockerClient) Run(ctx context.Context, opts RunOpts) (RunResult, error) {
+	timeout := opts.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Minute
+	}
+	memLimit := opts.MemoryLimit
+	if memLimit == "" {
+		memLimit = "2g"
+	}
+	cpuLimit := opts.CPULimit
+	if cpuLimit == "" {
+		cpuLimit = "2"
+	}
 
-	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
-	out, err := cmd.Output()
+	args := []string{
+		"run", "--rm",
+		"-v", opts.MountPath + ":/workspace",
+		"-w", "/workspace",
+		"--memory=" + memLimit,
+		"--cpus=" + cpuLimit,
+		"--pids-limit=512",
+		"--network=none",
+	}
+	for _, e := range opts.Env {
+		args = append(args, "-e", e)
+	}
+	args = append(args, opts.Image)
+	args = append(args, opts.Command...)
+
+	tctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(tctx, "docker", args...)
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	if opts.LogFunc != nil {
+		stdoutR, stdoutW := io.Pipe()
+		stderrR, stderrW := io.Pipe()
+
+		cmd.Stdout = stdoutW
+		cmd.Stderr = stderrW
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			scanner := bufio.NewScanner(stdoutR)
+			for scanner.Scan() {
+				line := scanner.Text()
+				stdoutBuf.WriteString(line + "\n")
+				opts.LogFunc(line)
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			scanner := bufio.NewScanner(stderrR)
+			for scanner.Scan() {
+				line := scanner.Text()
+				stderrBuf.WriteString(line + "\n")
+				opts.LogFunc(line)
+			}
+		}()
+
+		err := cmd.Start()
+		if err != nil {
+			stdoutW.Close()
+			stderrW.Close()
+			return RunResult{}, fmt.Errorf("DockerClient.Run start: %w", err)
+		}
+
+		waitErr := cmd.Wait()
+		stdoutW.Close()
+		stderrW.Close()
+		wg.Wait()
+
+		result := RunResult{
+			Stdout: stdoutBuf.String(),
+			Stderr: stderrBuf.String(),
+		}
+
+		if waitErr != nil {
+			var exitErr *exec.ExitError
+			if ok := isExitError(waitErr, &exitErr); ok {
+				result.ExitCode = exitErr.ExitCode()
+				return result, nil
+			}
+			return result, fmt.Errorf("DockerClient.Run wait: %w", waitErr)
+		}
+		return result, nil
+	}
+
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err := cmd.Run()
+	result := RunResult{
+		Stdout: stdoutBuf.String(),
+		Stderr: stderrBuf.String(),
+	}
+
 	if err != nil {
-		return "", fmt.Errorf("DockerClient.RunContainer: %w", err)
+		var exitErr *exec.ExitError
+		if ok := isExitError(err, &exitErr); ok {
+			result.ExitCode = exitErr.ExitCode()
+			return result, nil
+		}
+		return result, fmt.Errorf("DockerClient.Run: %w", err)
 	}
-
-	containerID := string(out)
-	if len(containerID) > 0 && containerID[len(containerID)-1] == '\n' {
-		containerID = containerID[:len(containerID)-1]
-	}
-
-	return containerID, nil
+	return result, nil
 }
 
-func (d *DockerClient) WaitContainer(ctx context.Context, containerID string) error {
-	cmd := exec.CommandContext(ctx, "docker", "wait", containerID)
-	out, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("DockerClient.WaitContainer %q: %w", containerID, err)
+func isExitError(err error, target **exec.ExitError) bool {
+	if ee, ok := err.(*exec.ExitError); ok {
+		*target = ee
+		return true
 	}
-
-	exitCode := string(out)
-	if len(exitCode) > 0 && exitCode[len(exitCode)-1] == '\n' {
-		exitCode = exitCode[:len(exitCode)-1]
-	}
-	if exitCode != "0" {
-		return fmt.Errorf("DockerClient.WaitContainer %q exited with %s", containerID, exitCode)
-	}
-	return nil
+	return false
 }
 
 func (d *DockerClient) LogsContainer(ctx context.Context, containerID string) ([]byte, error) {
@@ -68,27 +178,11 @@ func (d *DockerClient) LogsContainer(ctx context.Context, containerID string) ([
 	return out, nil
 }
 
-func (d *DockerClient) StreamLogs(ctx context.Context, containerID string, pub func(string)) error {
-	cmd := exec.CommandContext(ctx, "docker", "logs", "-f", containerID)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("DockerClient.StreamLogs stdout pipe: %w", err)
-	}
+func trimNL(s string) string {
+	return strings.TrimRight(s, "\r\n")
+}
 
-	cmd.Stderr = cmd.Stdout
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("DockerClient.StreamLogs start: %w", err)
-	}
-
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		pub(scanner.Text())
-	}
-
-	if err := scanner.Err(); err != nil {
-		d.logger.WarnContext(ctx, "docker logs scanner error", slog.String("error", err.Error()))
-	}
-
-	return cmd.Wait()
+func parseExitCode(s string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(s))
+	return n
 }

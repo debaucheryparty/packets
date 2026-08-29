@@ -1,0 +1,49 @@
+syntax = "proto3";
+package packets.v1;
+
+option go_package = "github.com/waris4ly/packets/proto/v1";
+
+service Workspace {
+  rpc Diff(WorkspaceManifest) returns (DiffResponse);
+  rpc Commit(CommitRequest) returns (CommitResponse);
+  rpc Snapshot(DownloadRequest) returns (stream WorkspaceChunk);
+}
+
+message WorkspaceManifest {
+  string root_hash = 1;
+  repeated FileEntry files = 2;
+}
+
+message FileEntry {
+  string path = 1;
+  string hash = 2;
+  int64 size = 3;
+  uint32 mode = 4;
+  bool is_dir = 5;
+  string link = 6;
+}
+
+message DiffResponse {
+  repeated string missing_hashes = 1;
+  map<string, string> presigned_put_urls = 2;
+  string existing_snapshot_ref = 3;
+}
+
+message CommitRequest {
+  string root_hash = 1;
+  repeated FileEntry files = 2;
+  string toolchain = 3;
+  string runner = 4;
+}
+
+message CommitResponse {
+  string snapshot_ref = 1;
+}
+
+message WorkspaceChunk {
+  bytes chunk = 1;
+}
+
+message DownloadRequest {
+  string snapshot_ref = 1;
+}

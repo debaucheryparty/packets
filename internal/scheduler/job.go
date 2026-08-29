@@ -18,6 +18,10 @@ func NewStateMachine() *StateMachine {
 func (s *StateMachine) ValidateTransition(from, to apitypes.JobState) error {
 	switch from {
 	case apitypes.JobStatePending:
+		if to == apitypes.JobStateUploading || to == apitypes.JobStateDispatched || to == apitypes.JobStateFailed || to == apitypes.JobStateFallbackLocal {
+			return nil
+		}
+	case apitypes.JobStateUploading:
 		if to == apitypes.JobStateDispatched || to == apitypes.JobStateFailed || to == apitypes.JobStateFallbackLocal {
 			return nil
 		}
@@ -30,7 +34,6 @@ func (s *StateMachine) ValidateTransition(from, to apitypes.JobState) error {
 			return nil
 		}
 	case apitypes.JobStateSucceeded, apitypes.JobStateFailed, apitypes.JobStateFallbackLocal:
-		// terminal states
 		return fmt.Errorf("ValidateTransition: cannot transition from terminal state %v: %w", from, ErrInvalidStateTransition)
 	}
 	return fmt.Errorf("ValidateTransition: %v to %v: %w", from, to, ErrInvalidStateTransition)

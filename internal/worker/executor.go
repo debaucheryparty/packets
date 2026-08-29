@@ -3,71 +3,155 @@ package worker
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
-	"strings"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/waris4ly/packets/internal/storage"
+	"github.com/waris4ly/packets/internal/toolchain"
+	"github.com/waris4ly/packets/internal/workspace"
 	"github.com/waris4ly/packets/pkg/apitypes"
 )
 
-type Executor struct {
-	logger *slog.Logger
-	docker *DockerClient
-	queue  *storage.NATSQueue
+type LogPublisher interface {
+	Publish(jobID apitypes.JobID, line string)
 }
 
-func NewExecutor(logger *slog.Logger, docker *DockerClient, queue *storage.NATSQueue) *Executor {
-	return &Executor{
-		logger: logger,
-		docker: docker,
-		queue:  queue,
+type Executor struct {
+	logger       *slog.Logger
+	docker       *DockerClient
+	store        storage.ObjectStore
+	registry     *toolchain.Registry
+	logPublisher LogPublisher
+	tempDir      string
+}
+
+func NewExecutor(logger *slog.Logger, docker *DockerClient, store storage.ObjectStore, registry *toolchain.Registry, logPublisher LogPublisher, tempDir string) *Executor {
+	if tempDir == "" {
+		tempDir = os.TempDir()
 	}
+	return &Executor{
+		logger:       logger,
+		docker:       docker,
+		store:        store,
+		registry:     registry,
+		logPublisher: logPublisher,
+		tempDir:      tempDir,
+	}
+}
+
+func (e *Executor) Execute(ctx context.Context, job apitypes.Job) (apitypes.ExecutionResult, error) {
+	jobDir, err := os.MkdirTemp(e.tempDir, "packets-job-"+string(job.ID)+"-")
+	if err != nil {
+		return apitypes.ExecutionResult{}, fmt.Errorf("Executor.Execute mkdirtemp: %w", err)
+	}
+	defer os.RemoveAll(jobDir)
+
+	srcDir := filepath.Join(jobDir, "workspace")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		return apitypes.ExecutionResult{}, fmt.Errorf("Executor.Execute mkdir src: %w", err)
+	}
+
+	if job.SnapshotRef != "" {
+		if err := workspace.ExtractSnapshot(ctx, e.store, job.Owner, job.SnapshotRef, srcDir); err != nil {
+			return apitypes.ExecutionResult{}, fmt.Errorf("Executor.Execute extract: %w", err)
+		}
+	}
+
+	image := e.resolveImage(job)
+
+	if err := e.docker.PullImage(ctx, image); err != nil {
+		return apitypes.ExecutionResult{}, fmt.Errorf("Executor.Execute pull %s: %w", image, err)
+	}
+
+	command := job.CommandArgs
+	if len(command) == 0 {
+		if def, ok := e.registry.Lookup(job.Toolchain); ok {
+			command = append([]string{def.LocalCommand}, def.DefaultArgs...)
+		}
+	}
+
+	var logFn func(string)
+	if e.logPublisher != nil {
+		logFn = func(line string) {
+			e.logPublisher.Publish(job.ID, line)
+		}
+	}
+
+	result, err := e.docker.Run(ctx, RunOpts{
+		Image:     image,
+		MountPath: srcDir,
+		Command:   command,
+		Timeout:   30 * time.Minute,
+		LogFunc:   logFn,
+	})
+	if err != nil {
+		return apitypes.ExecutionResult{
+			ExitCode: 1,
+			Stdout:   result.Stdout,
+			Stderr:   result.Stderr,
+			Error:    err,
+		}, nil
+	}
+
+	execResult := apitypes.ExecutionResult{
+		ExitCode: result.ExitCode,
+		Stdout:   result.Stdout,
+		Stderr:   result.Stderr,
+	}
+
+	if result.ExitCode == 0 && e.store != nil && len(job.ArtifactPaths) > 0 {
+		ref, err := e.collectArtifacts(ctx, srcDir, job.ArtifactPaths, string(job.ID), job.Owner)
+		if err != nil {
+			e.logger.WarnContext(ctx, "artifact collection failed", slog.String("job_id", string(job.ID)), slog.String("err", err.Error()))
+		} else {
+			execResult.ArtifactRef = ref
+		}
+	}
+
+	return execResult, nil
+}
+
+func (e *Executor) resolveImage(job apitypes.Job) string {
+	if e.registry != nil {
+		if def, ok := e.registry.Lookup(job.Toolchain); ok && def.DockerImage != "" {
+			return def.DockerImage
+		}
+	}
+	if job.Image != "" {
+		return job.Image
+	}
+	return "ubuntu:24.04"
+}
+
+func (e *Executor) collectArtifacts(ctx context.Context, srcDir string, paths []string, jobID, owner string) (apitypes.ArtifactRef, error) {
+	pr, pw, err := createTarGzPipe(srcDir, paths)
+	if err != nil {
+		return "", fmt.Errorf("collectArtifacts tar: %w", err)
+	}
+
+	key := fmt.Sprintf("%s/artifacts/%s/output.tar.gz", owner, jobID)
+	if err := e.store.Upload(ctx, key, pr, -1); err != nil {
+		pw.Close()
+		return "", fmt.Errorf("collectArtifacts upload: %w", err)
+	}
+	pw.Close()
+
+	return apitypes.ArtifactRef(key), nil
 }
 
 func (e *Executor) Dispatch(ctx context.Context, job apitypes.Job) (apitypes.JobID, error) {
-	e.logger.InfoContext(ctx, "starting local docker worker execution",
-		slog.String("job_id", string(job.ID)),
-		slog.String("toolchain", string(job.Toolchain)),
-	)
-
-	image := "alpine:latest"
-	if err := e.docker.PullImage(ctx, image); err != nil {
-		return "", fmt.Errorf("Executor.Dispatch pull image: %w", err)
-	}
-
-	containerID, err := e.docker.RunContainer(ctx, image, "/workspace", []string{"echo", "built"})
+	result, err := e.Execute(ctx, job)
 	if err != nil {
-		return "", fmt.Errorf("Executor.Dispatch run container: %w", err)
+		return "", err
 	}
-
-	e.logger.DebugContext(ctx, "container started", slog.String("container_id", containerID))
-
-	go func() {
-		subject := fmt.Sprintf("job.%s.logs", job.ID)
-		_ = e.docker.StreamLogs(context.Background(), containerID, func(line string) {
-			if e.queue != nil {
-				_ = e.queue.Publish(context.Background(), subject, []byte(line))
-			}
-		})
-	}()
-
-	if waitErr := e.docker.WaitContainer(ctx, containerID); waitErr != nil {
-		logs, _ := e.docker.LogsContainer(context.Background(), containerID)
-		e.logger.ErrorContext(ctx, "container failed",
-			slog.String("container_id", containerID),
-			slog.String("logs", strings.TrimSpace(string(logs))),
-		)
-		return "", fmt.Errorf("Executor.Dispatch wait: %w", waitErr)
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("build exited with code %d: %s", result.ExitCode, result.Stderr)
 	}
-
 	return job.ID, nil
 }
 
 func (e *Executor) Status(ctx context.Context, id apitypes.JobID) (apitypes.JobState, error) {
 	return apitypes.JobStateSucceeded, nil
-}
-
-func (e *Executor) FetchArtifact(ctx context.Context, id apitypes.JobID) (io.ReadCloser, error) {
-	return nil, fmt.Errorf("DockerWorker.FetchArtifact not implemented")
 }

@@ -8,6 +8,7 @@ service Scheduler {
   rpc GetJobStatus(GetJobStatusRequest) returns (GetJobStatusResponse);
   rpc StreamJobLogs(StreamJobLogsRequest) returns (stream JobLogLine);
   rpc ClearCache(ClearCacheRequest) returns (ClearCacheResponse);
+  rpc DownloadArtifact(DownloadArtifactRequest) returns (stream ArtifactChunk);
 }
 
 message ClearCacheRequest {
@@ -21,8 +22,12 @@ message ClearCacheResponse {
 message SubmitJobRequest {
   string cache_key = 1;
   string toolchain = 2;
-  bytes build_manifest = 3;
+  string snapshot_ref = 3;
   string docker_image = 4;
+  string runner = 5;
+  string source_mode = 6;
+  repeated string command_args = 7;
+  repeated string artifact_paths = 8;
 }
 
 message SubmitJobResponse {
@@ -48,10 +53,20 @@ message JobLogLine {
   string content = 1;
 }
 
+message DownloadArtifactRequest {
+  string job_id = 1;
+}
+
+message ArtifactChunk {
+  bytes data = 1;
+}
+
 enum JobState {
   JOB_STATE_UNSPECIFIED = 0;
   JOB_STATE_PENDING = 1;
-  JOB_STATE_RUNNING = 2;
-  JOB_STATE_SUCCEEDED = 3;
-  JOB_STATE_FAILED = 4;
+  JOB_STATE_UPLOADING = 2;
+  JOB_STATE_DISPATCHED = 3;
+  JOB_STATE_RUNNING = 4;
+  JOB_STATE_SUCCEEDED = 5;
+  JOB_STATE_FAILED = 6;
 }

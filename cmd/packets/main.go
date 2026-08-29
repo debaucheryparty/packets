@@ -38,6 +38,9 @@ func main() {
 		cli.NewBuildCommand(cfg, logger),
 		cli.NewStatusCommand(cfg, logger),
 		cli.NewCacheCommand(cfg, logger),
+		cli.NewProviderCommand(cfg, logger),
+		cli.NewLogsCommand(cfg, logger),
+		cli.NewArtifactCommand(cfg, logger),
 	)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {

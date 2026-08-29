@@ -5,122 +5,163 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/waris4ly/packets/internal/config"
-	"github.com/waris4ly/packets/internal/provider"
 	"github.com/waris4ly/packets/internal/shim"
-	"github.com/waris4ly/packets/internal/storage"
 	"github.com/waris4ly/packets/internal/toolchain"
+	"github.com/waris4ly/packets/internal/workspace"
 	"github.com/waris4ly/packets/pkg/apitypes"
 	pb "github.com/waris4ly/packets/proto/v1"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "build",
 		Short: "Execute a remote build",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			pwd, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("failed to get working directory: %w", err)
-			}
-
-			registry := toolchain.NewRegistry()
-			detector := shim.NewDetector(registry)
-			router := shim.NewRouter(logger, detector)
-			runner := shim.NewFallbackRunner(logger)
-
-			def, err := detector.DetectToolchain(pwd)
-			if err != nil {
-				return fmt.Errorf("build failed: %w", err)
-			}
-
-			target, err := router.Route(ctx, pwd)
-			if err != nil {
-				return fmt.Errorf("routing failed: %w", err)
-			}
-
-			remoteCall := func(callCtx context.Context) error {
-				if cfg.DirectCIMode {
-					logger.InfoContext(callCtx, "Direct-CI mode enabled, bypassing scheduler and dispatching directly to GitHub Actions")
-					if cfg.GitHubActionsToken == "" || cfg.GitHubActionsRepo == "" {
-						return fmt.Errorf("GitHub Actions credentials missing for Direct-CI mode")
-					}
-					cacheKey, _ := GenerateCacheKey(callCtx, pwd, string(def.Name))
-					job := apitypes.Job{
-						ID:          apitypes.JobID(fmt.Sprintf("job_%d", time.Now().UnixNano())),
-						Toolchain:   def.Name,
-						CacheKey:    cacheKey,
-						Provider:    apitypes.ProviderGitHubActions,
-						State:       apitypes.JobStatePending,
-					}
-					
-					ghProvider := provider.NewGitHubActions(logger, cfg.GitHubActionsToken, cfg.GitHubActionsRepo)
-					_, err := ghProvider.Dispatch(callCtx, job)
-					if err != nil {
-						return fmt.Errorf("direct CI dispatch failed: %w", err)
-					}
-					
-					logger.InfoContext(callCtx, "Direct CI job dispatched successfully (fire-and-forget)")
-					return nil
-				}
-
-				if target.Backend == apitypes.BackendScheduler {
-					return executeViaScheduler(callCtx, cfg, logger, def, pwd, args)
-				}
-				// other backends bypass scheduler (e.g. sccache-dist, gradle cache)
-				// in MVP if it's not scheduler we simulate remote action
-				// or let fallback catch it and run locally
-				return shim.ErrRemoteUnreachable
-			}
-
-			return runner.ExecuteWithFallback(ctx, def, pwd, args, remoteCall)
-		},
 	}
+
+	cmd.Flags().String("runner", "", "Runner: docker, github, local")
+	cmd.Flags().String("source", "", "Source mode: workspace, git")
+	cmd.Flags().String("ref", "", "Git ref for --source=git")
+	cmd.Flags().StringArray("artifact", nil, "Artifact paths to collect")
+	cmd.Flags().Bool("wait", false, "Wait for build completion")
+	cmd.Flags().String("provider", "", "Named provider from config")
+	cmd.Flags().Bool("force", false, "Re-upload entire workspace")
+	cmd.Flags().Bool("dry-run", false, "Show what would be uploaded without building")
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
+
+		runnerFlag, _ := cmd.Flags().GetString("runner")
+		sourceFlag, _ := cmd.Flags().GetString("source")
+		artifactFlag, _ := cmd.Flags().GetStringArray("artifact")
+		waitFlag, _ := cmd.Flags().GetBool("wait")
+		forceFlag, _ := cmd.Flags().GetBool("force")
+		dryRunFlag, _ := cmd.Flags().GetBool("dry-run")
+		providerFlag, _ := cmd.Flags().GetString("provider")
+
+		pwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get working directory: %w", err)
+		}
+
+		projCfg, _ := config.LoadProjectConfig(pwd)
+		if providerFlag == "" && projCfg != nil && projCfg.Provider != "" {
+			providerFlag = projCfg.Provider
+		}
+
+		if runnerFlag == "" && providerFlag != "" {
+			globalProviders, err := config.LoadGlobalProviders()
+			if err == nil {
+				if p, exists := globalProviders.Providers[providerFlag]; exists {
+					switch p.Type {
+					case "ssh-docker":
+						runnerFlag = string(apitypes.RunnerDocker)
+					case "github-actions":
+						runnerFlag = string(apitypes.RunnerGitHub)
+					case "local":
+						runnerFlag = string(apitypes.RunnerLocal)
+					}
+				}
+			}
+		}
+
+		registry := toolchain.NewRegistry()
+		detector := shim.NewDetector(registry)
+
+		def, err := detector.DetectToolchain(pwd)
+		if err != nil {
+			return fmt.Errorf("build failed: %w", err)
+		}
+
+		if len(artifactFlag) == 0 && projCfg != nil && len(projCfg.Build.Artifacts) > 0 {
+			artifactFlag = projCfg.Build.Artifacts
+		}
+		if len(artifactFlag) == 0 && len(def.DefaultArtifacts) > 0 {
+			artifactFlag = def.DefaultArtifacts
+		}
+
+		runner := apitypes.RunnerName(runnerFlag)
+		if runner == "" {
+			runner = apitypes.RunnerName(cfg.DefaultRunner)
+		}
+		if runner == "" {
+			runner = apitypes.RunnerDocker
+		}
+
+		sourceMode := apitypes.SourceMode(sourceFlag)
+		if sourceMode == "" {
+			sourceMode = apitypes.SourceModeWorkspace
+		}
+
+		if dryRunFlag {
+			manifest, err := workspace.ScanWorkspace(pwd, nil)
+			if err != nil {
+				return fmt.Errorf("dry-run scan: %w", err)
+			}
+			fmt.Printf("Dry-run: detected %d files (root hash: %s)\n", len(manifest.Files), manifest.RootHash)
+			for _, f := range manifest.Files {
+				if !f.IsDir {
+					fmt.Printf("  %s (size: %d bytes, hash: %s)\n", f.Path, f.Size, f.Hash)
+				}
+			}
+			return nil
+		}
+
+		return executeViaScheduler(ctx, cfg, logger, def, pwd, args, runner, sourceMode, artifactFlag, waitFlag, forceFlag)
+	}
+
+	return cmd
 }
 
-func executeViaScheduler(ctx context.Context, cfg *config.Config, logger *slog.Logger, def apitypes.ToolchainDef, dir string, args []string) error {
-	addr := cfg.OracleVMTailscaleHost + cfg.SchedulerAddr()
-
-	remoteURI := fmt.Sprintf("ubuntu@%s:/tmp/packets-builds/%s", cfg.OracleVMTailscaleHost, filepath.Base(dir))
-	sync := storage.NewMutagenSync(logger, dir, remoteURI)
-
-	logger.Info("starting mutagen sync", slog.String("remote", remoteURI))
-	if err := sync.Start(ctx); err != nil {
-		logger.Warn("mutagen sync failed to start, build will proceed but may lack local changes", slog.String("error", err.Error()))
-	}
-	defer func() {
-		logger.Info("terminating mutagen sync")
-		_ = sync.Stop(context.Background())
-	}()
-
-	dialCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext(dialCtx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+func executeViaScheduler(
+	ctx context.Context,
+	cfg *config.Config,
+	logger *slog.Logger,
+	def apitypes.ToolchainDef,
+	dir string,
+	args []string,
+	runner apitypes.RunnerName,
+	sourceMode apitypes.SourceMode,
+	artifactPaths []string,
+	wait bool,
+	force bool,
+) error {
+	conn, err := DialScheduler(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("dial scheduler: %w", err)
+		return err
 	}
 	defer conn.Close()
 
-	client := pb.NewSchedulerClient(conn)
-
-	cacheKey, err := GenerateCacheKey(ctx, dir, string(def.Name))
-	if err != nil {
-		logger.WarnContext(ctx, "failed to generate precise cache key, caching might be suboptimal", slog.String("error", err.Error()))
-		cacheKey = "fallback_key_" + string(def.Name)
+	var snapshotRef string
+	if sourceMode == apitypes.SourceModeWorkspace {
+		logger.InfoContext(ctx, "uploading workspace", slog.String("runner", string(runner)))
+		snapshotRef, err = workspace.UploadWorkspace(ctx, conn, dir, force)
+		if err != nil {
+			return fmt.Errorf("workspace upload: %w", err)
+		}
+		logger.InfoContext(ctx, "workspace ready", slog.String("snapshot_ref", snapshotRef))
 	}
 
+	cacheKey, err := GenerateCacheKey(ctx, dir, string(def.Name), string(runner), string(sourceMode), snapshotRef)
+	if err != nil {
+		logger.WarnContext(ctx, "cache key generation failed, using fallback", slog.String("error", err.Error()))
+		cacheKey = fmt.Sprintf("%s:%s:%s", def.Name, runner, snapshotRef)
+	}
+
+	client := pb.NewSchedulerClient(conn)
+
 	resp, err := client.SubmitJob(ctx, &pb.SubmitJobRequest{
-		CacheKey:    cacheKey,
-		Toolchain:   string(def.Name),
-		DockerImage: def.DockerImage,
+		CacheKey:      cacheKey,
+		Toolchain:     string(def.Name),
+		DockerImage:   def.DockerImage,
+		Runner:        string(runner),
+		SourceMode:    string(sourceMode),
+		SnapshotRef:   snapshotRef,
+		CommandArgs:   args,
+		ArtifactPaths: artifactPaths,
 	})
 	if err != nil {
 		return fmt.Errorf("SubmitJob: %w", err)
@@ -131,5 +172,41 @@ func executeViaScheduler(ctx context.Context, cfg *config.Config, logger *slog.L
 		slog.Bool("cache_hit", resp.CacheHit),
 	)
 
+	if wait {
+		return pollJobStatus(ctx, cfg, client, resp.JobId, dir, logger)
+	}
+
 	return nil
+}
+
+func pollJobStatus(ctx context.Context, cfg *config.Config, client pb.SchedulerClient, jobID, dir string, logger *slog.Logger) error {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			resp, err := client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: jobID})
+			if err != nil {
+				return fmt.Errorf("GetJobStatus: %w", err)
+			}
+			switch resp.State {
+			case pb.JobState_JOB_STATE_SUCCEEDED:
+				logger.Info("build succeeded", slog.String("artifact_ref", resp.ArtifactRef))
+				if resp.ArtifactRef != "" {
+					logger.Info("automatically pulling build artifacts into local workspace...")
+					if pullErr := PullAndExtractArtifact(ctx, cfg, logger, jobID, dir); pullErr != nil {
+						logger.Warn("auto-pull artifact failed", slog.String("error", pullErr.Error()))
+					}
+				}
+				return nil
+			case pb.JobState_JOB_STATE_FAILED:
+				return fmt.Errorf("build failed: %s", resp.ErrorMessage)
+			default:
+				logger.Info("build in progress", slog.String("state", resp.State.String()))
+			}
+		}
+	}
 }

@@ -2,8 +2,10 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"io"
 
+	"github.com/waris4ly/packets/internal/provider"
 	"github.com/waris4ly/packets/internal/storage"
 	"github.com/waris4ly/packets/pkg/apitypes"
 	pb "github.com/waris4ly/packets/proto/v1"
@@ -13,16 +15,20 @@ import (
 
 type Server struct {
 	pb.UnimplementedSchedulerServer
-	dispatcher *Dispatcher
-	store      *storage.JobStore
-	queue      *storage.NATSQueue
+	dispatcher  *Dispatcher
+	store       *storage.JobStore
+	logBroker   *LogBroker
+	objectStore storage.ObjectStore
+	providers   map[apitypes.ProviderName]provider.BuildProvider
 }
 
-func NewServer(dispatcher *Dispatcher, store *storage.JobStore, queue *storage.NATSQueue) *Server {
+func NewServer(dispatcher *Dispatcher, store *storage.JobStore, logBroker *LogBroker, objectStore storage.ObjectStore, providers map[apitypes.ProviderName]provider.BuildProvider) *Server {
 	return &Server{
-		dispatcher: dispatcher,
-		store:      store,
-		queue:      queue,
+		dispatcher:  dispatcher,
+		store:       store,
+		logBroker:   logBroker,
+		objectStore: objectStore,
+		providers:   providers,
 	}
 }
 
@@ -34,13 +40,26 @@ func (s *Server) SubmitJob(ctx context.Context, req *pb.SubmitJobRequest) (*pb.S
 		return nil, status.Error(codes.InvalidArgument, "toolchain is required")
 	}
 
-	buildReq := apitypes.BuildRequest{
-		Toolchain:   apitypes.Toolchain(req.Toolchain),
-		DockerImage: req.DockerImage,
+	owner := "default"
+	if u, ok := ctx.Value("tailscale_user").(string); ok && u != "" {
+		owner = u
 	}
 
-	jobID, hit, err := s.dispatcher.Submit(ctx, buildReq, req.CacheKey)
+	buildReq := apitypes.BuildRequest{
+		Toolchain:     apitypes.Toolchain(req.Toolchain),
+		DockerImage:   req.DockerImage,
+		Runner:        apitypes.RunnerName(req.Runner),
+		SourceMode:    apitypes.SourceMode(req.SourceMode),
+		SnapshotRef:   req.SnapshotRef,
+		CommandArgs:   req.CommandArgs,
+		ArtifactPaths: req.ArtifactPaths,
+	}
+
+	jobID, hit, err := s.dispatcher.Submit(ctx, buildReq, req.CacheKey, owner)
 	if err != nil {
+		if errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrRateLimitExceeded) {
+			return nil, status.Errorf(codes.ResourceExhausted, "%v", err)
+		}
 		return nil, status.Errorf(codes.Internal, "failed to submit job: %v", err)
 	}
 
@@ -64,8 +83,9 @@ func (s *Server) GetJobStatus(ctx context.Context, req *pb.GetJobStatusRequest) 
 	}
 
 	return &pb.GetJobStatusResponse{
-		State:       mapState(job.State),
-		ArtifactRef: string(job.ArtifactRef),
+		State:        mapState(job.State),
+		ArtifactRef:  string(job.ArtifactRef),
+		ErrorMessage: job.Error,
 	}, nil
 }
 
@@ -74,43 +94,132 @@ func (s *Server) StreamJobLogs(req *pb.StreamJobLogsRequest, stream pb.Scheduler
 		return status.Error(codes.InvalidArgument, "job_id is required")
 	}
 
-	if s.queue == nil {
-		return status.Error(codes.FailedPrecondition, "log streaming is not configured")
+	if s.logBroker == nil {
+		return status.Error(codes.Unavailable, "log streaming is not available")
 	}
 
 	ctx := stream.Context()
-	logChan := make(chan string, 100)
-	subject := fmt.Sprintf("job.%s.logs", req.JobId)
+	jobID := apitypes.JobID(req.JobId)
 
-	err := s.queue.Subscribe(ctx, subject, func(data []byte) {
-		select {
-		case logChan <- string(data):
-		default:
-			// drop logs if client is too slow
+	existing, ch, cleanup := s.logBroker.Subscribe(ctx, jobID)
+	defer cleanup()
+
+	for _, line := range existing {
+		if err := stream.Send(&pb.JobLogLine{Content: line}); err != nil {
+			return err
 		}
-	})
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to subscribe to logs: %v", err)
+	}
+
+	if s.logBroker.IsClosed(jobID) {
+		return nil
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
-		case line := <-logChan:
+			return ctx.Err()
+		case line, ok := <-ch:
+			if !ok {
+				return nil
+			}
 			if err := stream.Send(&pb.JobLogLine{Content: line}); err != nil {
 				return err
 			}
+			if s.logBroker.IsClosed(jobID) && len(ch) == 0 {
+				return nil
+			}
 		}
 	}
+}
+
+func (s *Server) DownloadArtifact(req *pb.DownloadArtifactRequest, stream pb.Scheduler_DownloadArtifactServer) error {
+	if req.JobId == "" {
+		return status.Error(codes.InvalidArgument, "job_id is required")
+	}
+
+	ctx := stream.Context()
+	job, err := s.store.GetJob(ctx, apitypes.JobID(req.JobId))
+	if err != nil {
+		return status.Errorf(codes.NotFound, "job not found: %v", err)
+	}
+
+	if job.State != apitypes.JobStateSucceeded {
+		return status.Errorf(codes.FailedPrecondition, "job is in state %s, not succeeded", job.State)
+	}
+
+	if job.Runner == apitypes.RunnerGitHub {
+		if ghProvider, ok := s.providers[apitypes.ProviderGitHubActions]; ok {
+			reader, err := ghProvider.FetchArtifact(ctx, job.ID)
+			if err == nil && reader != nil {
+				defer reader.Close()
+				buf := make([]byte, 64*1024)
+				for {
+					n, err := reader.Read(buf)
+					if n > 0 {
+						if sendErr := stream.Send(&pb.ArtifactChunk{Data: buf[:n]}); sendErr != nil {
+							return sendErr
+						}
+					}
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						return status.Errorf(codes.Internal, "read artifact: %v", err)
+					}
+				}
+				return nil
+			}
+		}
+	}
+
+	if string(job.ArtifactRef) == "" {
+		return status.Error(codes.NotFound, "no artifact reference found for job")
+	}
+
+	if s.objectStore == nil {
+		return status.Error(codes.Unavailable, "object store is not configured")
+	}
+
+	reader, err := s.objectStore.Download(ctx, string(job.ArtifactRef))
+	if err != nil {
+		return status.Errorf(codes.NotFound, "artifact download failed: %v", err)
+	}
+	defer reader.Close()
+
+	buf := make([]byte, 64*1024)
+	for {
+		n, err := reader.Read(buf)
+		if n > 0 {
+			if sendErr := stream.Send(&pb.ArtifactChunk{Data: buf[:n]}); sendErr != nil {
+				return sendErr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return status.Errorf(codes.Internal, "stream artifact chunk: %v", err)
+		}
+	}
+	return nil
+}
+
+func (s *Server) ClearCache(ctx context.Context, req *pb.ClearCacheRequest) (*pb.ClearCacheResponse, error) {
+	count, err := s.store.DeleteCacheEntries(ctx, req.Toolchain)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "ClearCache: %v", err)
+	}
+	return &pb.ClearCacheResponse{ClearedCount: int32(count)}, nil
 }
 
 func mapState(state apitypes.JobState) pb.JobState {
 	switch state {
 	case apitypes.JobStatePending:
 		return pb.JobState_JOB_STATE_PENDING
+	case apitypes.JobStateUploading:
+		return pb.JobState_JOB_STATE_UPLOADING
 	case apitypes.JobStateDispatched:
-		return pb.JobState_JOB_STATE_PENDING
+		return pb.JobState_JOB_STATE_DISPATCHED
 	case apitypes.JobStateRunning:
 		return pb.JobState_JOB_STATE_RUNNING
 	case apitypes.JobStateSucceeded:
@@ -120,9 +229,4 @@ func mapState(state apitypes.JobState) pb.JobState {
 	default:
 		return pb.JobState_JOB_STATE_UNSPECIFIED
 	}
-}
-
-func (s *Server) ClearCache(ctx context.Context, req *pb.ClearCacheRequest) (*pb.ClearCacheResponse, error) {
-	// MOCK: in a real implementation we would call s.store.DeleteJobsByToolchain
-	return &pb.ClearCacheResponse{ClearedCount: 42}, nil
 }

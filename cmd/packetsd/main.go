@@ -16,10 +16,13 @@ import (
 	"github.com/waris4ly/packets/internal/provider"
 	"github.com/waris4ly/packets/internal/scheduler"
 	"github.com/waris4ly/packets/internal/storage"
+	"github.com/waris4ly/packets/internal/toolchain"
 	"github.com/waris4ly/packets/internal/worker"
+	"github.com/waris4ly/packets/internal/workspace"
 	"github.com/waris4ly/packets/pkg/apitypes"
 	pb "github.com/waris4ly/packets/proto/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 var version = "dev"
@@ -27,7 +30,6 @@ var version = "dev"
 func main() {
 	ctx := context.Background()
 
-	// load config eagerly per Hard Rule 15
 	cfg, err := config.LoadConfig(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
@@ -46,7 +48,6 @@ func main() {
 
 	logger.Info("starting packetsd", slog.String("version", version))
 
-	// init storage
 	store, err := storage.NewJobStore(ctx, cfg.SQLiteDBPath)
 	if err != nil {
 		logger.Error("failed to init storage", slog.String("error", err.Error()))
@@ -54,42 +55,65 @@ func main() {
 	}
 	defer store.Close()
 
-	// init NATS queue
-	queue, err := storage.NewNATSQueue(ctx, logger, cfg.NATSUrl)
-	if err != nil {
-		logger.Error("failed to init nats", slog.String("error", err.Error()))
-		os.Exit(1)
+	var objectStore storage.ObjectStore
+	if cfg.ObjectStoreType != "" {
+		objectStore, err = storage.NewS3ObjectStore(
+			cfg.ObjectStoreEndpoint,
+			cfg.ObjectStoreRegion,
+			cfg.ObjectStoreAccessKey,
+			cfg.ObjectStoreSecretKey,
+			cfg.ObjectStoreBucket,
+			cfg.ObjectStoreForcePathStyle,
+		)
+		if err != nil {
+			logger.Error("failed to init object store", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
 	}
-	defer queue.Close()
 
-	// init docker worker
+	logBroker := scheduler.NewLogBroker()
+	quotaLimiter := scheduler.NewQuotaLimiter(cfg.MaxConcurrentJobsPerUser, cfg.MaxSubmissionsPerMinute)
+
+	registry := toolchain.NewRegistry()
 	dockerClient := worker.NewDockerClient(logger)
-	executor := worker.NewExecutor(logger, dockerClient, queue)
+	executor := worker.NewExecutor(logger, dockerClient, objectStore, registry, logBroker, cfg.WorkspaceTempDir)
 
-	// init CI providers
 	providers := map[apitypes.ProviderName]provider.BuildProvider{
 		apitypes.ProviderGitHubActions: provider.NewGitHubActions(logger, cfg.GitHubActionsToken, cfg.GitHubActionsRepo),
 		apitypes.ProviderCircleCI:      provider.NewCircleCI(logger, cfg.CircleCIToken, cfg.CircleCIProjectSlug),
-		apitypes.ProviderDockerWorker:  executor,
 	}
 
-	// init scheduler components
-	dispatcher := scheduler.NewDispatcher(logger, store, queue, providers)
+	dispatcher := scheduler.NewDispatcher(logger, store, providers, executor, quotaLimiter, logBroker)
 
-	// start worker pool
-	workerPool := scheduler.NewWorkerPool(logger, queue, dispatcher, 4) // max 4 concurrent builds
-	if err := workerPool.Start(ctx); err != nil {
-		logger.Error("failed to start worker pool", slog.String("error", err.Error()))
-		os.Exit(1)
+	if err := dispatcher.RecoverPendingJobs(ctx); err != nil {
+		logger.Warn("job recovery failed", slog.String("error", err.Error()))
 	}
 
-	srv := scheduler.NewServer(dispatcher, store, queue)
+	srv := scheduler.NewServer(dispatcher, store, logBroker, objectStore, providers)
 
-	grpcServer := grpc.NewServer(
+	var serverOpts []grpc.ServerOption
+	serverOpts = append(serverOpts,
 		grpc.UnaryInterceptor(scheduler.TailscaleInterceptor()),
 		grpc.StreamInterceptor(scheduler.TailscaleStreamInterceptor()),
 	)
+
+	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+		creds, err := credentials.NewServerTLSFromFile(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			logger.Error("failed to load TLS certificate", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, grpc.Creds(creds))
+		logger.Info("TLS enabled for gRPC server")
+	}
+
+	grpcServer := grpc.NewServer(serverOpts...)
 	pb.RegisterSchedulerServer(grpcServer, srv)
+
+	if objectStore != nil {
+		wsSrv := workspace.NewServer(objectStore, registry)
+		pb.RegisterWorkspaceServer(grpcServer, wsSrv)
+	}
 
 	listener, err := net.Listen("tcp", cfg.SchedulerAddr())
 	if err != nil {
@@ -104,7 +128,6 @@ func main() {
 		}
 	}()
 
-	// start metrics server
 	go func() {
 		metricsAddr := ":9090"
 		logger.Info("metrics server listening", slog.String("addr", metricsAddr))
@@ -113,7 +136,6 @@ func main() {
 		}
 	}()
 
-	// graceful shutdown
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
