@@ -1,22 +1,28 @@
 <p align="center">
   <h1 align="center">📦 Packets</h1>
-  <p align="center">A zero-cost remote build execution system</p>
+  <p align="center">A generic remote build execution and caching system</p>
 </p>
 
 [![release](https://img.shields.io/github/v/release/waris4ly/packets.svg?label=latest)](https://github.com/waris4ly/packets/releases)
 [![Build Status](https://github.com/waris4ly/packets/actions/workflows/ci.yml/badge.svg)](https://github.com/waris4ly/packets/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/waris4ly/packets)](https://goreportcard.com/report/github.com/waris4ly/packets)
 
-Packets is an elegant remote build execution system.
-It offloads compilation in **any programming language** from a local machine to remote compute, while keeping your IDE experience completely unchanged.
+Packets is a remote build execution and caching system.
+It offloads heavy compilation tasks from your local machine to a powerful remote server or CI environment, seamlessly integrating with your existing IDE and local workflow.
+
+## Use Cases
+
+* **Offload Heavy Builds:** Compile large codebases (Rust, C++, Go) on a high-core-count remote server instead of draining your laptop's battery.
+* **Shared Team Cache:** Store build artifacts in a central S3/MinIO bucket. If a teammate has already compiled a specific commit, you download the cached binary instantly instead of recompiling.
+* **Cross-Platform Compilation:** Write code on Linux/Windows but dispatch builds to GitHub Actions macOS runners automatically (e.g., for Swift or iOS apps).
 
 ## Features
 
 * Complete support for **30+ programming languages** out of the box
 * Written in pure Go, ensuring zero-dependency, static binaries
-* **Git-Aware Caching**: Uses `git ls-tree` and `git status` for instant, robust state-dependent cache keys
+* **Git-Aware Caching**: Uses `git status` and file hashing for robust state-dependent cache keys
 * **Zero-Config Fallback**: Gracefully falls back to local execution if the remote node is unreachable
-* **Real-Time Logs**: Streams compilation stdout/stderr directly to your local terminal via NATS
+* **Real-Time Logs**: Streams compilation stdout/stderr directly to your local terminal
 * **Direct-CI Mode**: Bypass self-hosted infrastructure and dispatch builds directly to GitHub Actions
 * Security: Secured by default using Tailscale `whois` gRPC interceptors
 
