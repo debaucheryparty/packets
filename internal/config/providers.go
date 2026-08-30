@@ -72,7 +72,7 @@ func SaveGlobalProviders(cfg *GlobalProvidersConfig) error {
 	}
 
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
@@ -81,7 +81,7 @@ func SaveGlobalProviders(cfg *GlobalProvidersConfig) error {
 		return fmt.Errorf("marshal global providers config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write global providers config: %w", err)
 	}
 

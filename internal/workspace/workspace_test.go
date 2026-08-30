@@ -19,25 +19,25 @@ func TestScanWorkspaceAndNormalize(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	subDir := filepath.Join(tmpDir, "src", "nested")
-	if err := os.MkdirAll(subDir, 0755); err != nil {
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	file1 := filepath.Join(tmpDir, "main.go")
-	if err := os.WriteFile(file1, []byte("package main\nfunc main() {}\n"), 0644); err != nil {
+	if err := os.WriteFile(file1, []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	file2 := filepath.Join(subDir, "helper.go")
-	if err := os.WriteFile(file2, []byte("package nested\n"), 0644); err != nil {
+	if err := os.WriteFile(file2, []byte("package nested\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	ignoredDir := filepath.Join(tmpDir, "node_modules", "package")
-	if err := os.MkdirAll(ignoredDir, 0755); err != nil {
+	if err := os.MkdirAll(ignoredDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(ignoredDir, "index.js"), []byte("console.log()"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(ignoredDir, "index.js"), []byte("console.log()"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -179,7 +179,7 @@ func TestExtractSnapshot(t *testing.T) {
 
 	testFile := filepath.Join(srcDir, "hello.txt")
 	testContent := []byte("hello packets remote build")
-	if err := os.WriteFile(testFile, testContent, 0644); err != nil {
+	if err := os.WriteFile(testFile, testContent, 0o644); err != nil {
 		t.Fatal(err)
 	}
 

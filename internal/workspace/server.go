@@ -76,7 +76,7 @@ func (s *Server) Diff(ctx context.Context, req *pb.WorkspaceManifest) (*pb.DiffR
 	}
 
 	return &pb.DiffResponse{
-		MissingHashes:   missing,
+		MissingHashes:    missing,
 		PresignedPutUrls: presignedURLs,
 	}, nil
 }

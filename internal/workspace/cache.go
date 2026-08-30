@@ -45,12 +45,12 @@ func loadLocalCache(workspaceDir string) (*localManifestCache, error) {
 }
 
 func saveLocalCache(workspaceDir string, c *localManifestCache) error {
-	if err := os.MkdirAll(cacheDir(workspaceDir), 0755); err != nil {
+	if err := os.MkdirAll(cacheDir(workspaceDir), 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(cachePath(workspaceDir), data, 0644)
+	return os.WriteFile(cachePath(workspaceDir), data, 0o644)
 }

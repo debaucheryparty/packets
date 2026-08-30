@@ -48,7 +48,7 @@ func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slo
 		return fmt.Errorf("received empty artifact")
 	}
 
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
 
@@ -69,10 +69,10 @@ func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slo
 		for _, zf := range zipReader.File {
 			outPath := filepath.Join(destDir, filepath.FromSlash(zf.Name))
 			if zf.FileInfo().IsDir() {
-				_ = os.MkdirAll(outPath, 0755)
+				_ = os.MkdirAll(outPath, 0o755)
 				continue
 			}
-			_ = os.MkdirAll(filepath.Dir(outPath), 0755)
+			_ = os.MkdirAll(filepath.Dir(outPath), 0o755)
 			rc, err := zf.Open()
 			if err != nil {
 				continue
@@ -89,7 +89,7 @@ func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slo
 	}
 
 	rawFile := filepath.Join(destDir, fmt.Sprintf("artifact_%s.bin", jobID))
-	if err := os.WriteFile(rawFile, data, 0644); err != nil {
+	if err := os.WriteFile(rawFile, data, 0o644); err != nil {
 		return fmt.Errorf("write raw artifact: %w", err)
 	}
 	logger.InfoContext(ctx, "raw artifact saved", slog.String("file", rawFile))

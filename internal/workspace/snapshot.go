@@ -36,14 +36,14 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 		destPath := filepath.Join(targetDir, filepath.FromSlash(f.Path))
 
 		if f.IsDir {
-			if err := os.MkdirAll(destPath, os.FileMode(f.Mode)|0700); err != nil {
+			if err := os.MkdirAll(destPath, os.FileMode(f.Mode)|0o700); err != nil {
 				return fmt.Errorf("ExtractSnapshot mkdir %s: %w", f.Path, err)
 			}
 			continue
 		}
 
 		if f.Link != "" {
-			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 				return fmt.Errorf("ExtractSnapshot mkdir for symlink %s: %w", f.Path, err)
 			}
 			if err := os.Symlink(f.Link, destPath); err != nil && !os.IsExist(err) {
@@ -80,10 +80,10 @@ func validatePath(p string) error {
 }
 
 func writeFile(dest string, mode os.FileMode, r io.Reader) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode|0600)
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode|0o600)
 	if err != nil {
 		return err
 	}

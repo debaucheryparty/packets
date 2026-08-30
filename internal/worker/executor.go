@@ -49,7 +49,7 @@ func (e *Executor) Execute(ctx context.Context, job apitypes.Job) (apitypes.Exec
 	defer os.RemoveAll(jobDir)
 
 	srcDir := filepath.Join(jobDir, "workspace")
-	if err := os.MkdirAll(srcDir, 0755); err != nil {
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		return apitypes.ExecutionResult{}, fmt.Errorf("Executor.Execute mkdir src: %w", err)
 	}
 
