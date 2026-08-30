@@ -27,7 +27,8 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64.5
-          args: --timeout=5m --go=1.24 --enable=gofmt,govet,errcheck,staticcheck,ineffassign,gosimple,unconvert,unparam,misspell,goimports,nolintlint,errorlint --max-issues-per-linter=0 --max-same-issues=0
+          args: --timeout=5m --enable=gofmt,govet,errcheck,staticcheck,ineffassign,gosimple,unconvert,unparam,misspell,goimports,nolintlint,errorlint ./...
+
 
 
 
