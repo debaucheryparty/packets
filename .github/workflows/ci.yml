@@ -24,7 +24,7 @@ jobs:
           test -z "$(gofumpt -l .)"
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v1.64.5
           args: --timeout=5m --enable=gofmt,govet,errcheck,staticcheck,ineffassign,gosimple,unconvert,unparam,misspell,goimports,nolintlint,errorlint ./...
