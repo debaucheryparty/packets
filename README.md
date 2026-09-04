@@ -1,96 +1,73 @@
 # Packets
 
-[![release](https://img.shields.io/github/v/release/debaucheryparty/packets.svg?label=latest)](https://github.com/debaucheryparty/packets/releases)
-[![Build Status](https://github.com/debaucheryparty/packets/actions/workflows/ci.yml/badge.svg)](https://github.com/debaucheryparty/packets/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/debaucheryparty/packets.svg)](https://pkg.go.dev/github.com/debaucheryparty/packets)
+A remote build execution and caching system designed specifically for developers using low-end laptops. It is:
 
-Packets is a remote build execution and caching system.
-Basically, it takes the heavy lifting of compiling code off your local machine and runs it on a remote server or a CI runner instead. It hooks right into your normal workflow without you having to change how you work in your IDE.
+* **Fast**: Packets' zero-cost abstractions and Git-aware caching give you instant build times if a teammate has already compiled a specific commit.
+* **Seamless**: Packets hooks right into your normal workflow without you having to change how you work in your IDE or local terminal.
+* **Flexible**: Packets has a minimal footprint and gracefully falls back to local execution or GitHub Actions naturally.
 
-## Features
+[![Release][release-badge]][release-url]
+[![Build Status][actions-badge]][actions-url]
+[![Go Reference][godoc-badge]][godoc-url]
+[![MIT licensed][mit-badge]][mit-url]
 
-* Complete support for **30+ programming languages** out of the box
-* Written in pure Go, so it runs anywhere without messy dependencies
-* **Git-Aware Caching**: Uses `git status` and file hashing to smartly cache builds. If your teammate already built it, you just download the binary instantly.
-* **Zero-Config Fallback**: If your remote server goes down, it just quietly falls back to building locally on your machine.
-* **Real-Time Logs**: Streams compilation logs right to your terminal as if it was building locally.
-* **Direct-CI Mode**: Skip the server entirely and just dispatch your builds straight to GitHub Actions (great for things like macOS/Swift builds when you're on Windows/Linux).
-* Secure by default, backing onto Tailscale for network verification.
+[release-badge]: https://img.shields.io/github/v/release/debaucheryparty/packets.svg?label=latest
+[release-url]: https://github.com/debaucheryparty/packets/releases
+[actions-badge]: https://github.com/debaucheryparty/packets/actions/workflows/ci.yml/badge.svg
+[actions-url]: https://github.com/debaucheryparty/packets/actions/workflows/ci.yml
+[godoc-badge]: https://pkg.go.dev/badge/github.com/debaucheryparty/packets.svg
+[godoc-url]: https://pkg.go.dev/github.com/debaucheryparty/packets
+[mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[mit-url]: https://github.com/debaucheryparty/packets/blob/main/LICENSE
 
-## Install
+[Setup Guide](guide.md) |
+[API Docs (Coming Soon)](#) |
+[Releases](https://github.com/debaucheryparty/packets/releases)
 
-### Command-line executable
+## Overview
+
+Packets is an event-driven, remote build platform for compiling applications in any programming language. At a high level, it provides a few major components:
+
+* A multithreaded, scalable build task **scheduler** (`packetsd`).
+* An **artifact cache** backed by the S3/MinIO compatible object storage.
+* An instantaneous **CLI worker** (`packets`) that streams logs over NATS.
+
+These components provide the runtime necessary for building large-scale applications without relying on a single laptop's processing power.
+
+## Example
+
+A basic remote build execution using Packets.
+
+Make sure you install the CLI tool executable:
 
 ```bash
 go install github.com/debaucheryparty/packets/cmd/packets@latest
 ```
-
-### Pre-compiled binaries
-
-You can just grab the latest binaries for Mac or Linux straight from our [GitHub Releases](https://github.com/debaucheryparty/packets/releases).
-
-### CI Integration
-
-If you want to use this in a serverless way (dispatching directly to GitHub actions), just set the environment variable:
-
-```bash
-export DIRECT_CI_MODE=true
-packets build .
-```
-
-## Usage
-
-### Using the CLI builder
-
-Run the CLI in your project folder. It'll automatically figure out what language you're using (by looking for stuff like `go.mod` or `Cargo.toml`) and send the build off.
+Then, inside any project directory (e.g. Go, Rust, C++):
 
 ```console
-$ packets build /path/to/your/project
+$ packets build .
 > Detecting toolchain...
 > Cache miss. Dispatching to remote server...
 > Compiling...
 > Done in 1.2s.
 ```
 
-Need to pass some extra flags to your compiler? Just add them at the end:
+If you prefer to bypass the self-hosted daemon and run a "Serverless" build straight to GitHub Actions (great for macOS/iOS builds):
 
 ```console
-$ packets build /path/to/your/project -- -v -race
+$ export DIRECT_CI_MODE=true
+$ packets build .
+> Direct-CI mode enabled, bypassing scheduler...
+> Direct CI job dispatched successfully.
 ```
 
-### Running the remote Daemon
+More setup examples and deployment architectures can be found in our [Setup Guide](guide.md). 
 
-Start the daemon on the beefy remote server you want to use for compiling. It handles all the worker queues, caching, and storage.
+## Getting Help
 
-```console
-$ packetsd
-> INFO starting packetsd version=v1.0.0
-> INFO grpc server listening addr=:50051
-```
-
-### Checking Job Status & Cache
-
-If you dispatched a job to a CI provider and want to see how it's doing, or if you just want to clear your cache:
-
-```console
-$ packets status <job_id>
-$ packets cache clear /path/to/your/project
-```
-
-## Documentation
-
-Check out our [Setup Guide](guide.md) if you want a step-by-step walkthrough on how to get everything installed, including the GitHub Actions failover stuff.
-
-## Limitations
-
-Besides the known bugs, there are a few things to keep in mind:
-- **Tailscale is required**: The daemon currently demands Tailscale to make sure your network is secure.
-- **MacOS Fallbacks**: If you want to do remote macOS builds, you'll need to rely on the GitHub Actions fallback since we don't natively manage macOS workers yet.
-
-## Contributing
-
-Contributions are totally welcome! Feel free to open an issue or drop a PR if you find bugs or want to add something cool.
+First, see if the answer to your question can be found in our [Documentation](guide.md) or [API Docs](https://pkg.go.dev/github.com/debaucheryparty/packets). If you still need help, feel free to open a GitHub Issue or Discussion!
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the [MIT license](LICENSE).
