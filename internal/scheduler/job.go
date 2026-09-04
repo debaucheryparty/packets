@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 var ErrInvalidStateTransition = errors.New("invalid state transition")

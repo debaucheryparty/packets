@@ -9,8 +9,8 @@ import (
 
 	"github.com/lmittmann/tint"
 	"github.com/spf13/cobra"
-	"github.com/waris4ly/packets/internal/cli"
-	"github.com/waris4ly/packets/internal/config"
+	"github.com/debaucheryparty/packets/internal/cli"
+	"github.com/debaucheryparty/packets/internal/config"
 )
 
 var version = "dev"
@@ -41,6 +41,7 @@ func main() {
 		cli.NewProviderCommand(cfg, logger),
 		cli.NewLogsCommand(cfg, logger),
 		cli.NewArtifactCommand(cfg, logger),
+		cli.NewAndroidCommand(cfg, logger),
 	)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {

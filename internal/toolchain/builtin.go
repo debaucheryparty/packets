@@ -1,6 +1,6 @@
 package toolchain
 
-import "github.com/waris4ly/packets/pkg/apitypes"
+import "github.com/debaucheryparty/packets/pkg/apitypes"
 
 func registerBuiltins(r *Registry) {
 	for _, def := range builtinToolchains {
@@ -43,4 +43,15 @@ var builtinToolchains = []apitypes.ToolchainDef{
 	{Name: apitypes.ToolchainD, DisplayName: "D", DetectFiles: []string{"dub.json", "dub.sdl"}, Backend: apitypes.BackendScheduler, LocalCommand: "dub", DefaultArgs: []string{"build"}, DockerImage: "dlang2/dmd-ubuntu:latest", DefaultArtifacts: []string{"bin/**"}},
 	{Name: apitypes.ToolchainV, DisplayName: "V", DetectFiles: []string{"v.mod"}, Backend: apitypes.BackendScheduler, LocalCommand: "v", DefaultArgs: []string{"."}, DockerImage: "thevlang/vlang:latest", DefaultArtifacts: []string{"bin/**"}},
 	{Name: apitypes.ToolchainErlang, DisplayName: "Erlang", DetectFiles: []string{"rebar.config"}, Backend: apitypes.BackendScheduler, LocalCommand: "rebar3", DefaultArgs: []string{"compile"}, DockerImage: "erlang:latest", DefaultArtifacts: []string{"_build/**"}},
+	{
+		Name:             apitypes.ToolchainAndroid,
+		DisplayName:      "Android",
+		DetectFiles:      []string{"gradlew"},
+		DetectDirs:       []string{"app"},
+		Backend:          apitypes.BackendScheduler,
+		LocalCommand:     "./gradlew",
+		DefaultArgs:      []string{"assembleDebug"},
+		DockerImage:      "reactnativecommunity/react-native-android:latest",
+		DefaultArtifacts: []string{"app/build/outputs/apk/debug/*.apk"},
+	},
 }

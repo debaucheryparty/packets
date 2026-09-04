@@ -104,6 +104,7 @@ const (
 	ToolchainGroovy  Toolchain = "groovy"
 	ToolchainFlutter Toolchain = "flutter"
 	ToolchainObjC    Toolchain = "objc"
+	ToolchainAndroid Toolchain = "android"
 )
 
 func (t Toolchain) String() string { return string(t) }

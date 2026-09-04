@@ -3,9 +3,9 @@
   <p align="center">A generic remote build execution and caching system</p>
 </p>
 
-[![release](https://img.shields.io/github/v/release/waris4ly/packets.svg?label=latest)](https://github.com/waris4ly/packets/releases)
-[![Build Status](https://github.com/waris4ly/packets/actions/workflows/ci.yml/badge.svg)](https://github.com/waris4ly/packets/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/waris4ly/packets)](https://goreportcard.com/report/github.com/waris4ly/packets)
+[![release](https://img.shields.io/github/v/release/debaucheryparty/packets.svg?label=latest)](https://github.com/debaucheryparty/packets/releases)
+[![Build Status](https://github.com/debaucheryparty/packets/actions/workflows/ci.yml/badge.svg)](https://github.com/debaucheryparty/packets/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/debaucheryparty/packets.svg)](https://pkg.go.dev/github.com/debaucheryparty/packets)
 
 Packets is a remote build execution and caching system.
 It offloads heavy compilation tasks from your local machine to a powerful remote server or CI environment, seamlessly integrating with your existing IDE and local workflow.
@@ -31,12 +31,12 @@ It offloads heavy compilation tasks from your local machine to a powerful remote
 ### Command-line executable
 
 ```bash
-go install github.com/waris4ly/packets/cmd/packets@latest
+go install github.com/debaucheryparty/packets/cmd/packets@latest
 ```
 
 ### Pre-compiled binaries (Mac/Linux)
 
-Download the latest compiled binaries for your OS directly from [GitHub Releases](https://github.com/waris4ly/packets/releases).
+Download the latest compiled binaries for your OS directly from [GitHub Releases](https://github.com/debaucheryparty/packets/releases).
 
 ### CI Integration
 

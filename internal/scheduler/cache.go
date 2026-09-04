@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 type CacheKeyBuilder struct{}

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 type CircleCI struct {

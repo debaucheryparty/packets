@@ -1,7 +1,7 @@
 syntax = "proto3";
 package packets.v1;
 
-option go_package = "github.com/waris4ly/packets/proto/v1";
+option go_package = "github.com/debaucheryparty/packets/proto/v1";
 
 service Workspace {
   rpc Diff(WorkspaceManifest) returns (DiffResponse);

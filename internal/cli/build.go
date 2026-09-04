@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/waris4ly/packets/internal/config"
-	"github.com/waris4ly/packets/internal/shim"
-	"github.com/waris4ly/packets/internal/toolchain"
-	"github.com/waris4ly/packets/internal/workspace"
-	"github.com/waris4ly/packets/pkg/apitypes"
-	pb "github.com/waris4ly/packets/proto/v1"
+	"github.com/debaucheryparty/packets/internal/config"
+	"github.com/debaucheryparty/packets/internal/shim"
+	"github.com/debaucheryparty/packets/internal/toolchain"
+	"github.com/debaucheryparty/packets/internal/workspace"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
+	pb "github.com/debaucheryparty/packets/proto/v1"
 )
 
 func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {

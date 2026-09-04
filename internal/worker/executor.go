@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/waris4ly/packets/internal/storage"
-	"github.com/waris4ly/packets/internal/toolchain"
-	"github.com/waris4ly/packets/internal/workspace"
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/internal/storage"
+	"github.com/debaucheryparty/packets/internal/toolchain"
+	"github.com/debaucheryparty/packets/internal/workspace"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 type LogPublisher interface {

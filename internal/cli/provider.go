@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
-	"github.com/waris4ly/packets/internal/config"
+	"github.com/debaucheryparty/packets/internal/config"
 )
 
 func NewProviderCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {

@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/waris4ly/packets/internal/provider"
-	"github.com/waris4ly/packets/internal/storage"
-	"github.com/waris4ly/packets/internal/worker"
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/internal/provider"
+	"github.com/debaucheryparty/packets/internal/storage"
+	"github.com/debaucheryparty/packets/internal/worker"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 type Dispatcher struct {

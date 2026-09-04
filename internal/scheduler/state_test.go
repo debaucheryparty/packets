@@ -3,7 +3,7 @@ package scheduler
 import (
 	"testing"
 
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 func TestStateMachine(t *testing.T) {

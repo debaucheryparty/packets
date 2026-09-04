@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 func TestLogBrokerPubSub(t *testing.T) {

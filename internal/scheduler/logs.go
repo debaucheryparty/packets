@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 type LogBroker struct {

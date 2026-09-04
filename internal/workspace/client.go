@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/waris4ly/packets/pkg/apitypes"
-	pb "github.com/waris4ly/packets/proto/v1"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
+	pb "github.com/debaucheryparty/packets/proto/v1"
 	"google.golang.org/grpc"
 )
 

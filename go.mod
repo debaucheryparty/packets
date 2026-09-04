@@ -1,4 +1,4 @@
-module github.com/waris4ly/packets
+module github.com/debaucheryparty/packets
 
 go 1.25.0
 

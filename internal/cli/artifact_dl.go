@@ -10,9 +10,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/waris4ly/packets/internal/config"
-	"github.com/waris4ly/packets/internal/workspace"
-	pb "github.com/waris4ly/packets/proto/v1"
+	"github.com/debaucheryparty/packets/internal/config"
+	"github.com/debaucheryparty/packets/internal/workspace"
+	pb "github.com/debaucheryparty/packets/proto/v1"
 )
 
 func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slog.Logger, jobID, destDir string) error {

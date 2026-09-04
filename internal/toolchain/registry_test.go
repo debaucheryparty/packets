@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/waris4ly/packets/internal/toolchain"
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/internal/toolchain"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 func TestRegistryLookup(t *testing.T) {

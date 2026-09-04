@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/waris4ly/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 func noopCommand() (string, []string) {
