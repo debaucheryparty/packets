@@ -9,7 +9,6 @@ deploy/local.env
 # Packets specific
 CLAUDE.md
 plan.md
-go.sum
 
 # Go build artifacts
 *.exe
