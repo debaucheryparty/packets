@@ -1,30 +1,21 @@
-<p align="center">
-  <h1 align="center">📦 Packets</h1>
-  <p align="center">A generic remote build execution and caching system</p>
-</p>
+# Packets
 
 [![release](https://img.shields.io/github/v/release/debaucheryparty/packets.svg?label=latest)](https://github.com/debaucheryparty/packets/releases)
 [![Build Status](https://github.com/debaucheryparty/packets/actions/workflows/ci.yml/badge.svg)](https://github.com/debaucheryparty/packets/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/debaucheryparty/packets.svg)](https://pkg.go.dev/github.com/debaucheryparty/packets)
 
 Packets is a remote build execution and caching system.
-It offloads heavy compilation tasks from your local machine to a powerful remote server or CI environment, seamlessly integrating with your existing IDE and local workflow.
-
-## Use Cases
-
-* **Offload Heavy Builds:** Compile large codebases (Rust, C++, Go) on a high-core-count remote server instead of draining your laptop's battery.
-* **Shared Team Cache:** Store build artifacts in a central S3/MinIO bucket. If a teammate has already compiled a specific commit, you download the cached binary instantly instead of recompiling.
-* **Cross-Platform Compilation:** Write code on Linux/Windows but dispatch builds to GitHub Actions macOS runners automatically (e.g., for Swift or iOS apps).
+Basically, it takes the heavy lifting of compiling code off your local machine and runs it on a remote server or a CI runner instead. It hooks right into your normal workflow without you having to change how you work in your IDE.
 
 ## Features
 
 * Complete support for **30+ programming languages** out of the box
-* Written in pure Go, ensuring zero-dependency, static binaries
-* **Git-Aware Caching**: Uses `git status` and file hashing for robust state-dependent cache keys
-* **Zero-Config Fallback**: Gracefully falls back to local execution if the remote node is unreachable
-* **Real-Time Logs**: Streams compilation stdout/stderr directly to your local terminal
-* **Direct-CI Mode**: Bypass self-hosted infrastructure and dispatch builds directly to GitHub Actions
-* Security: Secured by default using Tailscale `whois` gRPC interceptors
+* Written in pure Go, so it runs anywhere without messy dependencies
+* **Git-Aware Caching**: Uses `git status` and file hashing to smartly cache builds. If your teammate already built it, you just download the binary instantly.
+* **Zero-Config Fallback**: If your remote server goes down, it just quietly falls back to building locally on your machine.
+* **Real-Time Logs**: Streams compilation logs right to your terminal as if it was building locally.
+* **Direct-CI Mode**: Skip the server entirely and just dispatch your builds straight to GitHub Actions (great for things like macOS/Swift builds when you're on Windows/Linux).
+* Secure by default, backing onto Tailscale for network verification.
 
 ## Install
 
@@ -34,13 +25,13 @@ It offloads heavy compilation tasks from your local machine to a powerful remote
 go install github.com/debaucheryparty/packets/cmd/packets@latest
 ```
 
-### Pre-compiled binaries (Mac/Linux)
+### Pre-compiled binaries
 
-Download the latest compiled binaries for your OS directly from [GitHub Releases](https://github.com/debaucheryparty/packets/releases).
+You can just grab the latest binaries for Mac or Linux straight from our [GitHub Releases](https://github.com/debaucheryparty/packets/releases).
 
 ### CI Integration
 
-You can integrate Packets directly into your CI pipeline using our action (if you are dispatching to a serverless mode):
+If you want to use this in a serverless way (dispatching directly to GitHub actions), just set the environment variable:
 
 ```bash
 export DIRECT_CI_MODE=true
@@ -49,9 +40,9 @@ packets build .
 
 ## Usage
 
-### As a CLI builder (Local execution to Remote)
+### Using the CLI builder
 
-Run the CLI in your project directory. The registry will automatically detect your toolchain (e.g., finding a `go.mod`, `Cargo.toml`, or `Package.swift`) and route the build appropriately.
+Run the CLI in your project folder. It'll automatically figure out what language you're using (by looking for stuff like `go.mod` or `Cargo.toml`) and send the build off.
 
 ```console
 $ packets build /path/to/your/project
@@ -61,15 +52,15 @@ $ packets build /path/to/your/project
 > Done in 1.2s.
 ```
 
-Or pass custom arguments to the underlying compiler:
+Need to pass some extra flags to your compiler? Just add them at the end:
 
 ```console
 $ packets build /path/to/your/project -- -v -race
 ```
 
-### As a remote Daemon
+### Running the remote Daemon
 
-Start the daemon on your remote heavy-compute node. The daemon manages the worker pool, state machine, cache, and artifact storage.
+Start the daemon on the beefy remote server you want to use for compiling. It handles all the worker queues, caching, and storage.
 
 ```console
 $ packetsd
@@ -77,52 +68,28 @@ $ packetsd
 > INFO grpc server listening addr=:50051
 ```
 
-### Check Job Status & Cache
+### Checking Job Status & Cache
 
-If a job is running asynchronously (e.g., dispatched to a CI provider), you can check its status or clear the cache:
+If you dispatched a job to a CI provider and want to see how it's doing, or if you just want to clear your cache:
 
 ```console
 $ packets status <job_id>
 $ packets cache clear /path/to/your/project
 ```
 
-## Configuration
-
-Set up your environment variables either locally or in `~/.packets/config.env` for global availability:
-
-```env
-# Tailscale Server Config
-TAILSCALE_AUTH_KEY=your_key
-SCHEDULER_GRPC_PORT=50051
-
-# MinIO Storage (Artifact Cache)
-MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=admin
-MINIO_SECRET_KEY=admin123
-B2_BUCKET_NAME=packets-cache
-
-# NATS Message Queue
-NATS_URL=nats://localhost:4222
-
-# GitHub Actions (For Direct-CI Mode / Failover)
-DIRECT_CI_MODE=true
-GITHUB_ACTIONS_TOKEN=ghp_your_token
-GITHUB_ACTIONS_REPO=username/repo
-```
-
 ## Documentation
 
-For a detailed, step-by-step installation guide (including how to set up GitHub Actions failover), see the [Setup Guide](guide.md).
+Check out our [Setup Guide](guide.md) if you want a step-by-step walkthrough on how to get everything installed, including the GitHub Actions failover stuff.
 
 ## Limitations
 
-Beside the known features, there are a few limitations currently:
-- **Tailscale Required**: The daemon currently mandates Tailscale for zero-trust network verification.
-- **MacOS Fallbacks**: Native remote MacOS execution requires a MacOS runner on GitHub Actions (handled via failover).
+Besides the known bugs, there are a few things to keep in mind:
+- **Tailscale is required**: The daemon currently demands Tailscale to make sure your network is secure.
+- **MacOS Fallbacks**: If you want to do remote macOS builds, you'll need to rely on the GitHub Actions fallback since we don't natively manage macOS workers yet.
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a PR for any bugs or enhancements.
+Contributions are totally welcome! Feel free to open an issue or drop a PR if you find bugs or want to add something cool.
 
 ## License
 
