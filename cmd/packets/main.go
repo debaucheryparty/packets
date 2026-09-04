@@ -7,10 +7,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/lmittmann/tint"
-	"github.com/spf13/cobra"
 	"github.com/debaucheryparty/packets/internal/cli"
 	"github.com/debaucheryparty/packets/internal/config"
+	"github.com/lmittmann/tint"
+	"github.com/spf13/cobra"
 )
 
 var version = "dev"

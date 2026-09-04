@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/debaucheryparty/packets/internal/provider"
 	"github.com/debaucheryparty/packets/internal/storage"
 	"github.com/debaucheryparty/packets/internal/worker"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
+	"github.com/google/uuid"
 )
 
 type Dispatcher struct {

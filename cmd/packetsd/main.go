@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lmittmann/tint"
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/provider"
 	"github.com/debaucheryparty/packets/internal/scheduler"
@@ -21,6 +20,7 @@ import (
 	"github.com/debaucheryparty/packets/internal/workspace"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 	pb "github.com/debaucheryparty/packets/proto/v1"
+	"github.com/lmittmann/tint"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )

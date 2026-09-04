@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/spf13/cobra"
 	"github.com/debaucheryparty/packets/internal/config"
 	pb "github.com/debaucheryparty/packets/proto/v1"
+	"github.com/spf13/cobra"
 )
 
 func NewCacheCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {

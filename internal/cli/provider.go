@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/spf13/cobra"
 	"github.com/debaucheryparty/packets/internal/config"
+	"github.com/spf13/cobra"
 )
 
 func NewProviderCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {

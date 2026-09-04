@@ -127,6 +127,7 @@ func NewEmulatorGrpcDisplayBackend(logger *slog.Logger) *EmulatorGrpcDisplayBack
 func (g *EmulatorGrpcDisplayBackend) Start(ctx context.Context, opts DisplayOpts) error {
 	return fmt.Errorf("emulator-grpc display backend is experimental; please use scrcpy backend")
 }
+
 func (g *EmulatorGrpcDisplayBackend) Stop(_ context.Context) error {
 	return nil
 }
