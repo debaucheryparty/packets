@@ -1,10 +1,10 @@
-# Packets
+# packets
 
 A remote build execution and caching system designed specifically for developers using low-end laptops. It is:
 
-* **Fast**: Packets' zero-cost abstractions and Git-aware caching give you instant build times if a teammate has already compiled a specific commit.
-* **Seamless**: Packets hooks right into your normal workflow without you having to change how you work in your IDE or local terminal.
-* **Flexible**: Packets has a minimal footprint and gracefully falls back to local execution or GitHub Actions naturally.
+* **Fast**: packets' zero-cost abstractions and Git-aware caching give you instant build times if a teammate has already compiled a specific commit.
+* **Seamless**: packets hooks right into your normal workflow without you having to change how you work in your IDE or local terminal.
+* **Flexible**: packets has a minimal footprint and gracefully falls back to local execution or GitHub Actions naturally.
 
 [![Release][release-badge]][release-url]
 [![Build Status][actions-badge]][actions-url]
@@ -20,13 +20,13 @@ A remote build execution and caching system designed specifically for developers
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [mit-url]: https://github.com/debaucheryparty/packets/blob/main/LICENSE
 
-[Setup Guide](guide.md) |
+[Setup Guide (Coming Soon)](#) |
 [API Docs (Coming Soon)](#) |
 [Releases](https://github.com/debaucheryparty/packets/releases)
 
 ## Overview
 
-Packets is an event-driven, remote build platform for compiling applications in any programming language. At a high level, it provides a few major components:
+packets is an event-driven, remote build platform for compiling applications in any programming language. At a high level, it provides a few major components:
 
 * A multithreaded, scalable build task **scheduler** (`packetsd`).
 * An **artifact cache** backed by the S3/MinIO compatible object storage.
@@ -36,7 +36,7 @@ These components provide the runtime necessary for building large-scale applicat
 
 ## Example
 
-A basic remote build execution using Packets.
+A basic remote build execution using packets.
 
 Make sure you install the CLI tool executable:
 
