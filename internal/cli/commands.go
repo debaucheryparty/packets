@@ -21,7 +21,7 @@ func NewLogsCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer conn.Close() //nolint:errcheck
 
 			client := pb.NewSchedulerClient(conn)
 			stream, err := client.StreamJobLogs(cmd.Context(), &pb.StreamJobLogsRequest{JobId: jobID})

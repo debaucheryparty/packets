@@ -61,7 +61,7 @@ func addToTar(tw *tar.Writer, base, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 	if err := tw.WriteHeader(&tar.Header{
 		Name: rel,
 		Size: info.Size(),
