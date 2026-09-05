@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{ //nolint:govet
+	logger := slog.New(tint.NewTextHandler(os.Stderr, &tint.Options{
 		Level:      cfg.ParseLogLevel(),
 		TimeFormat: time.TimeOnly,
 	}))

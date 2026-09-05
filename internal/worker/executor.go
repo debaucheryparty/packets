@@ -46,7 +46,7 @@ func (e *Executor) Execute(ctx context.Context, job apitypes.Job) (apitypes.Exec
 	if err != nil {
 		return apitypes.ExecutionResult{}, fmt.Errorf("Executor.Execute mkdirtemp: %w", err)
 	}
-	defer os.RemoveAll(jobDir)
+	defer os.RemoveAll(jobDir) //nolint:errcheck
 
 	srcDir := filepath.Join(jobDir, "workspace")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {

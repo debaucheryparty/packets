@@ -23,7 +23,7 @@ func NewCacheCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer conn.Close() //nolint:errcheck
 
 			client := pb.NewSchedulerClient(conn)
 			resp, err := client.ClearCache(cmd.Context(), &pb.ClearCacheRequest{Toolchain: "all"})

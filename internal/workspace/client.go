@@ -72,7 +72,7 @@ func UploadWorkspace(ctx context.Context, conn *grpc.ClientConn, dir string, for
 		if err != nil {
 			return "", fmt.Errorf("UploadWorkspace upload chunk %s: %w", hash[:8], err)
 		}
-		resp.Body.Close()
+		resp.Body.Close() //nolint:errcheck
 		if resp.StatusCode >= 300 {
 			return "", fmt.Errorf("UploadWorkspace upload chunk %s: status %d", hash[:8], resp.StatusCode)
 		}

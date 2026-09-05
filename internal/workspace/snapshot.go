@@ -21,7 +21,7 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 	if err != nil {
 		return fmt.Errorf("ExtractSnapshot download manifest: %w", err)
 	}
-	defer r.Close()
+	defer r.Close() //nolint:errcheck
 
 	var manifest apitypes.WorkspaceManifest
 	if err := json.NewDecoder(r).Decode(&manifest); err != nil {
@@ -59,10 +59,10 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 		}
 
 		if err := writeFile(destPath, os.FileMode(f.Mode), cr); err != nil {
-			cr.Close()
+			cr.Close() //nolint:errcheck
 			return fmt.Errorf("ExtractSnapshot write %s: %w", f.Path, err)
 		}
-		cr.Close()
+		cr.Close() //nolint:errcheck
 	}
 
 	return nil
@@ -87,7 +87,7 @@ func writeFile(dest string, mode os.FileMode, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 	_, err = io.Copy(f, r)
 	return err
 }

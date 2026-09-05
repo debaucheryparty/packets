@@ -158,7 +158,7 @@ func (g *GitHubActions) FetchArtifact(ctx context.Context, id apitypes.JobID) (i
 	if err != nil {
 		return nil, fmt.Errorf("fetch artifacts list: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("list artifacts failed with status: %d", resp.StatusCode)

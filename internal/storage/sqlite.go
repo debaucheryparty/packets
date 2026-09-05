@@ -121,7 +121,7 @@ func (s *JobStore) CompleteJob(ctx context.Context, id apitypes.JobID, ref apity
 			`INSERT OR REPLACE INTO cache_entries (cache_key, artifact_ref, created_at) VALUES (?, ?, ?)`,
 			cacheKey, string(ref), now,
 		); err != nil {
-			tx.Rollback()
+			tx.Rollback() //nolint:errcheck
 			return fmt.Errorf("CompleteJob write cache: %w", err)
 		}
 	}

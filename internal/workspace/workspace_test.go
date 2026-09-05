@@ -175,7 +175,7 @@ func TestExtractSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dstDir)
+	defer os.RemoveAll(dstDir) //nolint:errcheck
 
 	testFile := filepath.Join(srcDir, "hello.txt")
 	testContent := []byte("hello packets remote build")

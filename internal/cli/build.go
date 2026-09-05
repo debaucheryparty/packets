@@ -133,7 +133,7 @@ func executeViaScheduler(
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	var snapshotRef string
 	if sourceMode == apitypes.SourceModeWorkspace {
