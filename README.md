@@ -38,7 +38,13 @@ These components provide the runtime necessary for building large-scale applicat
 
 A basic remote build execution using packets.
 
-Make sure you install the CLI tool executable:
+Install the pre-compiled executable via our setup script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/debaucheryparty/packets/main/scripts/install.sh | bash
+```
+
+Alternatively, if you prefer building from source:
 
 ```bash
 go install github.com/debaucheryparty/packets/cmd/packets@latest
