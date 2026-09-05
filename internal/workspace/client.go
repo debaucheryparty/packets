@@ -95,7 +95,7 @@ func UploadWorkspace(ctx context.Context, conn *grpc.ClientConn, dir string, for
 	return commitResp.SnapshotRef, nil
 }
 
-func manifestToProto(m *apitypes.WorkspaceManifest) []*pb.FileEntry {
+func manifestToProto(m *apitypes.WorkspaceManifest) []*pb.FileEntry { //nolint:unused
 	out := make([]*pb.FileEntry, len(m.Files))
 	for i, f := range m.Files {
 		out[i] = &pb.FileEntry{

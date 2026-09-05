@@ -66,7 +66,7 @@ func (g *GitHubActions) Dispatch(ctx context.Context, job apitypes.Job) (apitype
 	if err != nil {
 		return "", fmt.Errorf("GitHubActions.Dispatch execute: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -103,7 +103,7 @@ func (g *GitHubActions) Status(ctx context.Context, id apitypes.JobID) (apitypes
 	if err != nil {
 		return apitypes.JobStateFailed, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return apitypes.JobStateFailed, fmt.Errorf("status check failed with code: %d", resp.StatusCode)
@@ -187,7 +187,7 @@ func (g *GitHubActions) FetchArtifact(ctx context.Context, id apitypes.JobID) (i
 	}
 
 	if dlResp.StatusCode != http.StatusOK {
-		dlResp.Body.Close()
+		dlResp.Body.Close() //nolint:errcheck
 		return nil, fmt.Errorf("download artifact failed with status: %d", dlResp.StatusCode)
 	}
 

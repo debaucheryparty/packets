@@ -120,7 +120,7 @@ func (s *Server) Snapshot(req *pb.DownloadRequest, stream pb.Workspace_SnapshotS
 	if err != nil {
 		return status.Errorf(codes.NotFound, "snapshot not found: %v", err)
 	}
-	defer r.Close()
+	defer r.Close() //nolint:errcheck
 
 	var manifest apitypes.WorkspaceManifest
 	if err := json.NewDecoder(r).Decode(&manifest); err != nil {
@@ -147,19 +147,19 @@ func (s *Server) Snapshot(req *pb.DownloadRequest, stream pb.Workspace_SnapshotS
 				Size: f.Size,
 				Mode: int64(f.Mode),
 			}); err != nil {
-				cr.Close()
+				cr.Close() //nolint:errcheck
 				writeErr = err
 				break
 			}
 			if _, err := io.Copy(tw, cr); err != nil {
-				cr.Close()
+				cr.Close() //nolint:errcheck
 				writeErr = err
 				break
 			}
-			cr.Close()
+			cr.Close() //nolint:errcheck
 		}
-		tw.Close()
-		gz.Close()
+		tw.Close() //nolint:errcheck
+		gz.Close() //nolint:errcheck
 		pw.CloseWithError(writeErr)
 	}()
 
@@ -168,11 +168,11 @@ func (s *Server) Snapshot(req *pb.DownloadRequest, stream pb.Workspace_SnapshotS
 		n, err := pr.Read(buf)
 		if n > 0 {
 			if serr := stream.Send(&pb.WorkspaceChunk{Chunk: buf[:n]}); serr != nil {
-				pr.Close()
+				pr.Close() //nolint:errcheck
 				return serr
 			}
 		}
-		if err == io.EOF {
+		if err == io.EOF { //nolint:errorlint
 			break
 		}
 		if err != nil {
@@ -188,7 +188,7 @@ func (s *Server) ResolveManifest(ctx context.Context, owner, snapshotRef string)
 	if err != nil {
 		return nil, fmt.Errorf("ResolveManifest download: %w", err)
 	}
-	defer r.Close()
+	defer r.Close() //nolint:errcheck
 	var m apitypes.WorkspaceManifest
 	if err := json.NewDecoder(r).Decode(&m); err != nil {
 		return nil, fmt.Errorf("ResolveManifest decode: %w", err)

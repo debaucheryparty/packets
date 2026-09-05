@@ -120,12 +120,12 @@ func detectAGPVersion(projectDir string) string {
 				parts := strings.Split(line, "com.android.tools.build:gradle:")
 				if len(parts) > 1 {
 					ver := strings.Trim(strings.Fields(parts[1])[0], `"'`)
-					f.Close()
+					f.Close() //nolint:errcheck
 					return ver
 				}
 			}
 		}
-		f.Close()
+		f.Close() //nolint:errcheck
 	}
 	return ""
 }

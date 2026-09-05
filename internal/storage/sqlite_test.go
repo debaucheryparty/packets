@@ -17,7 +17,7 @@ func newTestStore(t *testing.T) *storage.JobStore {
 	if err != nil {
 		t.Fatalf("failed to create test store: %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { s.Close() }) //nolint:errcheck
 	return s
 }
 

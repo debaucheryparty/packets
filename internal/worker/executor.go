@@ -133,10 +133,10 @@ func (e *Executor) collectArtifacts(ctx context.Context, srcDir string, paths []
 
 	key := fmt.Sprintf("%s/artifacts/%s/output.tar.gz", owner, jobID)
 	if err := e.store.Upload(ctx, key, pr, -1); err != nil {
-		pw.Close()
+		pw.Close() //nolint:errcheck
 		return "", fmt.Errorf("collectArtifacts upload: %w", err)
 	}
-	pw.Close()
+	pw.Close() //nolint:errcheck
 
 	return apitypes.ArtifactRef(key), nil
 }

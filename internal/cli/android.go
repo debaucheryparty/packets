@@ -77,7 +77,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 			if err != nil {
 				return fmt.Errorf("connect to packetsd: %w", err)
 			}
-			defer conn.Close()
+			defer conn.Close() //nolint:errcheck
 
 			uploadStart := time.Now()
 			fmt.Println("Uploading project to remote node...")
@@ -323,7 +323,7 @@ func newAndroidTestCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comma
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer conn.Close() //nolint:errcheck
 
 			snapshotRef, err := workspace.UploadWorkspace(ctx, conn, proj.Root, false)
 			if err != nil {
@@ -709,7 +709,7 @@ func runBuildInstallLaunch(
 	if err != nil {
 		return fmt.Errorf("connect to packetsd: %w", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	fmt.Println("Uploading workspace...")
 	snapshotRef, err := workspace.UploadWorkspace(ctx, conn, projectRoot, false)
@@ -744,7 +744,7 @@ func runBuildInstallLaunch(
 	} else {
 		fmt.Printf("Running Gradle (%s)...\n", gradleTask)
 		if err := pollJobStatus(ctx, cfg, client, resp.JobId, projectRoot, logger); err != nil {
-			return fmt.Errorf("Gradle build failed.\n\nJob: %s\nVariant: %s\n\nRemote output: check with `packets logs %s`\n\nError: %w",
+			return fmt.Errorf("Gradle build failed.\n\nJob: %s\nVariant: %s\n\nRemote output: check with `packets logs %s`\n\nError: %w", //nolint:staticcheck
 				resp.JobId, variant, resp.JobId, err)
 		}
 		fmt.Println("✓ Build complete")

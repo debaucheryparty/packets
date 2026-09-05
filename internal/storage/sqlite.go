@@ -35,12 +35,12 @@ func NewJobStore(ctx context.Context, dbPath string) (*JobStore, error) {
 	}
 
 	if _, err := db.ExecContext(ctx, migration001); err != nil {
-		db.Close()
+		db.Close() //nolint:errcheck
 		return nil, fmt.Errorf("NewJobStore initial migration: %w", err)
 	}
 
 	if err := runMigrations(db); err != nil {
-		db.Close()
+		db.Close() //nolint:errcheck
 		return nil, fmt.Errorf("NewJobStore migrations: %w", err)
 	}
 
@@ -113,7 +113,7 @@ func (s *JobStore) CompleteJob(ctx context.Context, id apitypes.JobID, ref apity
 		`UPDATE jobs SET state = ?, completed_at = ?, artifact_ref = ? WHERE id = ?`,
 		int(apitypes.JobStateSucceeded), now, string(ref), string(id),
 	); err != nil {
-		tx.Rollback()
+		tx.Rollback() //nolint:errcheck
 		return fmt.Errorf("CompleteJob update job: %w", err)
 	}
 	if cacheKey != "" && ref != "" {
@@ -167,7 +167,7 @@ func (s *JobStore) ListJobsByState(ctx context.Context, states ...apitypes.JobSt
 	if err != nil {
 		return nil, fmt.Errorf("ListJobsByState: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var jobs []apitypes.Job
 	for rows.Next() {
@@ -190,7 +190,7 @@ func (s *JobStore) ListRecentJobs(ctx context.Context, limit int) ([]apitypes.Jo
 	if err != nil {
 		return nil, fmt.Errorf("ListRecentJobs: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	var jobs []apitypes.Job
 	for rows.Next() {

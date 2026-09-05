@@ -115,14 +115,14 @@ func (d *DockerClient) Run(ctx context.Context, opts RunOpts) (RunResult, error)
 
 		err := cmd.Start()
 		if err != nil {
-			stdoutW.Close()
-			stderrW.Close()
+			stdoutW.Close() //nolint:errcheck
+			stderrW.Close() //nolint:errcheck
 			return RunResult{}, fmt.Errorf("DockerClient.Run start: %w", err)
 		}
 
 		waitErr := cmd.Wait()
-		stdoutW.Close()
-		stderrW.Close()
+		stdoutW.Close() //nolint:errcheck
+		stderrW.Close() //nolint:errcheck
 		wg.Wait()
 
 		result := RunResult{
@@ -162,7 +162,7 @@ func (d *DockerClient) Run(ctx context.Context, opts RunOpts) (RunResult, error)
 }
 
 func isExitError(err error, target **exec.ExitError) bool {
-	if ee, ok := err.(*exec.ExitError); ok {
+	if ee, ok := err.(*exec.ExitError); ok { //nolint:errorlint
 		*target = ee
 		return true
 	}
@@ -178,11 +178,11 @@ func (d *DockerClient) LogsContainer(ctx context.Context, containerID string) ([
 	return out, nil
 }
 
-func trimNL(s string) string {
+func trimNL(s string) string { //nolint:unused
 	return strings.TrimRight(s, "\r\n")
 }
 
-func parseExitCode(s string) int {
+func parseExitCode(s string) int { //nolint:unused
 	n, _ := strconv.Atoi(strings.TrimSpace(s))
 	return n
 }

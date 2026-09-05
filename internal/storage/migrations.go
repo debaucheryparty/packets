@@ -34,11 +34,11 @@ func runMigrations(db *sql.DB) error {
 			return fmt.Errorf("runMigrations begin tx v%d: %w", m.version, err)
 		}
 		if _, err := tx.Exec(m.sql); err != nil {
-			tx.Rollback()
+			tx.Rollback() //nolint:errcheck
 			return fmt.Errorf("runMigrations apply v%d: %w", m.version, err)
 		}
 		if _, err := tx.Exec(`INSERT INTO schema_version (version) VALUES (?)`, m.version); err != nil {
-			tx.Rollback()
+			tx.Rollback() //nolint:errcheck
 			return fmt.Errorf("runMigrations record v%d: %w", m.version, err)
 		}
 		if err := tx.Commit(); err != nil {

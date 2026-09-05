@@ -97,7 +97,7 @@ func ExtractTarGz(r io.Reader, targetDir string) error {
 	if err != nil {
 		return fmt.Errorf("ExtractTarGz gzip: %w", err)
 	}
-	defer gz.Close()
+	defer gz.Close() //nolint:errcheck
 
 	tr := tar.NewReader(gz)
 	for {

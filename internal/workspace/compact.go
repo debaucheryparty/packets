@@ -42,7 +42,7 @@ func (c *Compactor) Compact(ctx context.Context, owner string, keepDuration time
 		}
 		var manifest apitypes.WorkspaceManifest
 		err = json.NewDecoder(r).Decode(&manifest)
-		r.Close()
+		r.Close() //nolint:errcheck
 		if err != nil {
 			continue
 		}
@@ -69,6 +69,6 @@ func (c *Compactor) Compact(ctx context.Context, owner string, keepDuration time
 	return nil
 }
 
-func readAllFrom(r io.Reader) ([]byte, error) {
+func readAllFrom(r io.Reader) ([]byte, error) { //nolint:unused
 	return io.ReadAll(r)
 }

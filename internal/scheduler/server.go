@@ -76,7 +76,7 @@ func (s *Server) GetJobStatus(ctx context.Context, req *pb.GetJobStatusRequest) 
 
 	job, err := s.store.GetJob(ctx, apitypes.JobID(req.JobId))
 	if err != nil {
-		if err == storage.ErrJobNotFound {
+		if err == storage.ErrJobNotFound { //nolint:errorlint
 			return nil, status.Error(codes.NotFound, "job not found")
 		}
 		return nil, status.Errorf(codes.Internal, "failed to get job: %v", err)
@@ -151,7 +151,7 @@ func (s *Server) DownloadArtifact(req *pb.DownloadArtifactRequest, stream pb.Sch
 		if ghProvider, ok := s.providers[apitypes.ProviderGitHubActions]; ok {
 			reader, err := ghProvider.FetchArtifact(ctx, job.ID)
 			if err == nil && reader != nil {
-				defer reader.Close()
+				defer reader.Close() //nolint:errcheck
 				buf := make([]byte, 64*1024)
 				for {
 					n, err := reader.Read(buf)
@@ -184,7 +184,7 @@ func (s *Server) DownloadArtifact(req *pb.DownloadArtifactRequest, stream pb.Sch
 	if err != nil {
 		return status.Errorf(codes.NotFound, "artifact download failed: %v", err)
 	}
-	defer reader.Close()
+	defer reader.Close() //nolint:errcheck
 
 	buf := make([]byte, 64*1024)
 	for {

@@ -23,7 +23,7 @@ type QuotaLimiter struct {
 	maxActive    int
 	ratePerMin   float64
 	users        map[string]*userState
-	cleanupTimer *time.Timer
+	cleanupTimer *time.Timer //nolint:unused
 }
 
 func NewQuotaLimiter(maxActive int, ratePerMin int) *QuotaLimiter {

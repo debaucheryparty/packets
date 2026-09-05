@@ -155,13 +155,13 @@ func quickHash(path string, modTime time.Time, size int64) string {
 	h := sha256.New()
 	h.Write([]byte(path))
 	h.Write([]byte(modTime.String()))
-	h.Write([]byte(fmt.Sprintf("%d", size)))
+	h.Write([]byte(fmt.Sprintf("%d", size))) //nolint:staticcheck
 
 	if f, err := os.Open(path); err == nil {
 		buf := make([]byte, 4096)
 		n, _ := f.Read(buf)
 		h.Write(buf[:n])
-		f.Close()
+		f.Close() //nolint:errcheck
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
 }

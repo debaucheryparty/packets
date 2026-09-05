@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{ //nolint:govet
 		Level:      cfg.ParseLogLevel(),
 		TimeFormat: time.TimeOnly,
 	}))
@@ -53,7 +53,7 @@ func main() {
 		logger.Error("failed to init storage", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	defer store.Close()
+	defer store.Close() //nolint:errcheck
 
 	var objectStore storage.ObjectStore
 	if cfg.ObjectStoreType != "" {

@@ -16,7 +16,7 @@ func TestScanWorkspaceAndNormalize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(tmpDir) //nolint:errcheck
 
 	subDir := filepath.Join(tmpDir, "src", "nested")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
@@ -65,7 +65,7 @@ func TestLocalCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(tmpDir) //nolint:errcheck
 
 	initial, err := loadLocalCache(tmpDir)
 	if err != nil {
@@ -169,7 +169,7 @@ func TestExtractSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(srcDir)
+	defer os.RemoveAll(srcDir) //nolint:errcheck
 
 	dstDir, err := os.MkdirTemp("", "packets-dst-*")
 	if err != nil {

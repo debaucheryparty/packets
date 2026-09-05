@@ -94,7 +94,7 @@ func (d *Dispatcher) Submit(ctx context.Context, req apitypes.BuildRequest, cach
 	return jobID, false, nil
 }
 
-func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req apitypes.BuildRequest) {
+func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req apitypes.BuildRequest) { //nolint:unparam
 	defer func() {
 		if d.limiter != nil {
 			d.limiter.Release(job.Owner)

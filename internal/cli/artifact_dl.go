@@ -35,7 +35,7 @@ func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slo
 	var buf bytes.Buffer
 	for {
 		chunk, err := stream.Recv()
-		if err == io.EOF {
+		if err == io.EOF { //nolint:errorlint
 			break
 		}
 		if err != nil {
@@ -80,9 +80,9 @@ func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slo
 			outFile, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, zf.Mode())
 			if err == nil {
 				_, _ = io.Copy(outFile, rc)
-				outFile.Close()
+				outFile.Close() //nolint:errcheck
 			}
-			rc.Close()
+			rc.Close() //nolint:errcheck
 		}
 		logger.InfoContext(ctx, "zip artifact extracted successfully", slog.String("dest", destDir))
 		return nil

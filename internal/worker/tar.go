@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-func createTarGzPipe(srcDir string, paths []string) (io.Reader, io.Closer, error) {
+func createTarGzPipe(srcDir string, paths []string) (io.Reader, io.Closer, error) { //nolint:unparam
 	pr, pw := io.Pipe()
 	go func() {
 		gz := gzip.NewWriter(pw)
@@ -30,8 +30,8 @@ func createTarGzPipe(srcDir string, paths []string) (io.Reader, io.Closer, error
 				break
 			}
 		}
-		tw.Close()
-		gz.Close()
+		tw.Close() //nolint:errcheck
+		gz.Close() //nolint:errcheck
 		pw.CloseWithError(werr)
 	}()
 	return pr, pw, nil

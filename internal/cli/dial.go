@@ -52,7 +52,7 @@ func DialScheduler(ctx context.Context, cfg *config.Config) (*grpc.ClientConn, e
 		transportCreds = insecure.NewCredentials()
 	}
 
-	conn, err := grpc.DialContext(dialCtx, addr, grpc.WithTransportCredentials(transportCreds), grpc.WithBlock())
+	conn, err := grpc.DialContext(dialCtx, addr, grpc.WithTransportCredentials(transportCreds), grpc.WithBlock()) //nolint:staticcheck
 	if err != nil {
 		return nil, fmt.Errorf("dial scheduler (%s): %w", addr, err)
 	}

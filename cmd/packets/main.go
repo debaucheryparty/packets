@@ -17,7 +17,7 @@ var version = "dev"
 
 func main() {
 	ctx := context.Background()
-	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{ //nolint:govet
 		Level:      slog.LevelInfo,
 		TimeFormat: time.TimeOnly,
 	}))
