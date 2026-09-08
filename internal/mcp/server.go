@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/config"
@@ -63,6 +65,9 @@ type PropertyDef struct {
 type CallToolParams struct {
 	Name      string                 `json:"name"`
 	Arguments map[string]interface{} `json:"arguments"`
+	Meta      struct {
+		ProgressToken interface{} `json:"progressToken"`
+	} `json:"_meta"`
 }
 
 type TextContent struct {
@@ -82,6 +87,8 @@ type Server struct {
 	policy     *policy.PolicyEngine
 	workingDir string
 	conn       *grpc.ClientConn
+	writer     io.Writer
+	writeMu    sync.Mutex
 }
 
 func NewServer(cfg *config.Config, logger *slog.Logger, workingDir string) *Server {
@@ -106,6 +113,7 @@ func (s *Server) SetPolicy(pe *policy.PolicyEngine) {
 }
 
 func (s *Server) Run(r io.Reader, w io.Writer) error {
+	s.writer = w
 	scanner := bufio.NewScanner(r)
 	encoder := json.NewEncoder(w)
 
@@ -117,21 +125,55 @@ func (s *Server) Run(r io.Reader, w io.Writer) error {
 
 		var req JSONRPCRequest
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
+			s.writeMu.Lock()
 			_ = encoder.Encode(JSONRPCResponse{
 				JSONRPC: "2.0",
 				Error:   &JSONRPCError{Code: -32700, Message: "Parse error"},
 			})
+			s.writeMu.Unlock()
 			continue
 		}
 
 		resp := s.handleRequest(req)
 		if resp != nil {
+			s.writeMu.Lock()
 			if err := encoder.Encode(resp); err != nil {
+				s.writeMu.Unlock()
 				return err
 			}
+			s.writeMu.Unlock()
 		}
 	}
 	return scanner.Err()
+}
+
+func (s *Server) SendNotification(method string, params interface{}) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if s.writer == nil {
+		return nil
+	}
+	notif := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  method,
+		"params":  params,
+	}
+	return json.NewEncoder(s.writer).Encode(notif)
+}
+
+func (s *Server) SendProgress(token interface{}, progress, total float64, message string) {
+	if token == nil {
+		return
+	}
+	p := map[string]interface{}{
+		"progressToken": token,
+		"progress":      progress,
+		"message":       message,
+	}
+	if total > 0 {
+		p["total"] = total
+	}
+	_ = s.SendNotification("notifications/progress", p)
 }
 
 func (s *Server) handleRequest(req JSONRPCRequest) *JSONRPCResponse {
@@ -299,6 +341,17 @@ func (s *Server) listTools() []Tool {
 					"dir":    {Type: "string", Description: "Destination directory path"},
 				},
 				Required: []string{"job_id"},
+			},
+		},
+		{
+			Name:        "packets_pull",
+			Description: "Pull build outputs, generated files, and artifacts from the remote persistent workspace into the local workspace",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"dir":    {Type: "string", Description: "Project destination directory"},
+					"job_id": {Type: "string", Description: "Optional specific job ID to pull artifacts from"},
+				},
 			},
 		},
 		{
@@ -501,7 +554,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("SubmitJob failed: " + err.Error())
 		}
 
-		logContent, execErr := s.collectJobLogs(ctx, client, resp.JobId)
+		logContent, execErr := s.collectJobLogs(ctx, client, resp.JobId, params.Meta.ProgressToken)
 		if execErr != nil {
 			return CallToolResult{
 				Content: []TextContent{
@@ -587,7 +640,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("SubmitJob failed: " + err.Error())
 		}
 
-		logContent, execErr := s.collectJobLogs(ctx, client, resp.JobId)
+		logContent, execErr := s.collectJobLogs(ctx, client, resp.JobId, params.Meta.ProgressToken)
 		if execErr != nil {
 			return CallToolResult{
 				Content: []TextContent{
@@ -678,7 +731,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("SubmitJob failed: " + err.Error())
 		}
 
-		logContent, execErr := s.collectJobLogs(ctx, client, resp.JobId)
+		logContent, execErr := s.collectJobLogs(ctx, client, resp.JobId, params.Meta.ProgressToken)
 		if execErr != nil {
 			return CallToolResult{
 				Content: []TextContent{
@@ -756,17 +809,70 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 		}
 
 		destDir := filepath.Join(dir, "build", "packets_artifacts")
-		_ = os.MkdirAll(destDir, 0o755)
-		totalBytes := 0
+		if d, ok := params.Arguments["dir"].(string); ok && d != "" {
+			destDir = d
+		}
+
+		var buf bytes.Buffer
 		for {
 			chunk, err := stream.Recv()
 			if err != nil {
 				break
 			}
-			totalBytes += len(chunk.Data)
+			buf.Write(chunk.Data)
 		}
 
-		return textResult(fmt.Sprintf("✓ Artifacts for job %s retrieved (ref: %s, %d bytes downloaded to %s)", jobID, statusResp.ArtifactRef, totalBytes, destDir))
+		if err := workspace.ExtractArtifact(buf.Bytes(), destDir, fmt.Sprintf("artifact_%s.bin", jobID)); err != nil {
+			return errorResult(fmt.Sprintf("Extracting artifact failed: %v", err))
+		}
+
+		return textResult(fmt.Sprintf("✓ Artifacts for job %s retrieved and extracted to %s (%d bytes)", jobID, destDir, buf.Len()))
+
+	case "packets_pull":
+		destDir := dir
+		if d, ok := params.Arguments["dir"].(string); ok && d != "" {
+			destDir = d
+		}
+		jobID, _ := params.Arguments["job_id"].(string)
+
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer conn.Close()
+		}
+
+		client := pb.NewSchedulerClient(conn)
+
+		if jobID == "" {
+			projectID := project.ResolveProjectID(dir)
+			jobID = projectID
+		}
+
+		stream, err := client.DownloadArtifact(ctx, &pb.DownloadArtifactRequest{JobId: jobID})
+		if err != nil {
+			return errorResult(fmt.Sprintf("DownloadArtifact failed: %v", err))
+		}
+
+		var buf bytes.Buffer
+		for {
+			chunk, err := stream.Recv()
+			if err != nil {
+				break
+			}
+			buf.Write(chunk.Data)
+		}
+
+		if buf.Len() == 0 {
+			return errorResult(fmt.Sprintf("No artifacts found to pull for %s", jobID))
+		}
+
+		if err := workspace.ExtractArtifact(buf.Bytes(), destDir, fmt.Sprintf("artifact_%s.bin", jobID)); err != nil {
+			return errorResult(fmt.Sprintf("Extracting pulled outputs failed: %v", err))
+		}
+
+		return textResult(fmt.Sprintf("✓ Successfully pulled %d bytes of build outputs/artifacts to %s", buf.Len(), destDir))
 
 	case "packets_status":
 		conn, err := s.dialScheduler(ctx)
@@ -783,8 +889,9 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 	}
 }
 
-func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, jobID string) (string, error) {
+func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, jobID string, progressToken interface{}) (string, error) {
 	var lines []string
+	var mu sync.Mutex
 	streamCtx, cancelStream := context.WithCancel(ctx)
 	defer cancelStream()
 
@@ -800,12 +907,21 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 			if err != nil {
 				break
 			}
+			mu.Lock()
 			lines = append(lines, line.Content)
+			count := len(lines)
+			mu.Unlock()
+
+			if progressToken != nil {
+				s.SendProgress(progressToken, float64(count), 0, line.Content)
+			}
 		}
 	}()
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
+
+	timeout := time.After(60 * time.Second)
 
 	for {
 		statusResp, err := client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: jobID})
@@ -816,6 +932,8 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 				case <-logDone:
 				case <-time.After(1 * time.Second):
 				}
+				mu.Lock()
+				defer mu.Unlock()
 				return strings.Join(lines, "\n"), nil
 			}
 			if statusResp.State == pb.JobState_JOB_STATE_FAILED {
@@ -824,6 +942,8 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 				case <-logDone:
 				case <-time.After(1 * time.Second):
 				}
+				mu.Lock()
+				defer mu.Unlock()
 				return strings.Join(lines, "\n"), fmt.Errorf("job failed: %s", statusResp.ErrorMessage)
 			}
 		}
@@ -834,10 +954,29 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 			case <-logDone:
 			case <-time.After(1 * time.Second):
 			}
+			mu.Lock()
+			defer mu.Unlock()
 			return strings.Join(lines, "\n"), ctx.Err()
+		case <-timeout:
+			cancelStream()
+			mu.Lock()
+			defer mu.Unlock()
+			return strings.Join(lines, "\n"), fmt.Errorf("job %s timed out waiting for completion", jobID)
 		case <-ticker.C:
 		}
 	}
+}
+
+type mcpBearerTokenAuth struct {
+	token string
+}
+
+func (b mcpBearerTokenAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + b.token}, nil
+}
+
+func (b mcpBearerTokenAuth) RequireTransportSecurity() bool {
+	return false
 }
 
 func (s *Server) dialScheduler(ctx context.Context) (*grpc.ClientConn, error) {
@@ -847,8 +986,26 @@ func (s *Server) dialScheduler(ctx context.Context) (*grpc.ClientConn, error) {
 	if s.cfg == nil {
 		return nil, fmt.Errorf("packets configuration is not set")
 	}
-	addr := s.cfg.SchedulerAddr()
-	return grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	host := s.cfg.OracleVMTailscaleHost
+	var addr string
+	if host == "" {
+		addr = "127.0.0.1" + s.cfg.SchedulerAddr()
+	} else if strings.Contains(host, ":") {
+		addr = host
+	} else {
+		addr = host + s.cfg.SchedulerAddr()
+	}
+
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+
+	if s.cfg.AuthToken != "" {
+		opts = append(opts, grpc.WithPerRPCCredentials(mcpBearerTokenAuth{token: s.cfg.AuthToken}))
+	}
+
+	return grpc.DialContext(ctx, addr, opts...)
 }
 
 func textResult(text string) CallToolResult {

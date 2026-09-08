@@ -9,23 +9,29 @@ import (
 
 const AgentsTemplate = `# Packets Remote AI Development Instructions
 
-This project uses **Packets** for remote development execution.
+This project uses **Packets** for remote development, persistent builds, and toolchain execution.
 
 ## Core Rules for AI Coding Agents
 
-1. **Local Machine is the Interface**: The local machine is reserved for editing source code, reviewing files, and configuring settings.
-2. **Never Run Heavy Commands Locally**: Do NOT execute Gradle builds, compiler invocations (cargo, go build, cmake), tests, emulators, or SDK management commands on the local machine.
-3. **Use Packets MCP Tools**: Always use Packets MCP tools for remote execution:
-   - packets_workspace_info: inspect workspace and components.
-   - packets_env_check: verify remote toolchains and SDKs.
-   - packets_env_prepare: provision missing dependencies.
-   - packets_sync: synchronize local changes to remote persistent workspace before execution.
-   - packets_build: trigger remote builds (e.g. ./gradlew assembleDebug, west build, cargo build).
-   - packets_test: run remote test suites.
-   - packets_exec: execute arbitrary commands on the VPS workspace.
-   - packets_artifacts: fetch build outputs (APKs, firmware binaries, etc.).
-4. **Synchronize Workspace**: Before requesting execution, ensure the workspace has been synchronized via packets_sync.
-5. **Request Approval**: When running remote commands or builds, confirm with the user before execution.
+1. **Local Machine is the Interface**: The local machine is reserved for editing source code, reading files, and project configuration.
+2. **Never Run Heavy Commands Locally**: Do NOT execute heavy compilation commands (e.g. ./gradlew assembleDebug, west build, cargo build, go build, make), long test suites, emulators, or SDK installations locally.
+3. **Use Packets MCP Tools**: Always use Packets MCP tools for remote execution and verification:
+   - packets_workspace_info: Inspect detected project components, toolchains, and topology.
+   - packets_env_check: Remotely verify toolchain and SDK readiness on the VPS worker.
+   - packets_env_prepare: Idempotently provision missing development toolchains and SDKs on the VPS worker.
+   - packets_sync: Synchronize modified local files incrementally to the remote persistent workspace before running jobs.
+   - packets_sync_full: Perform full synchronization with remote deletion detection.
+   - packets_pull: Pull newly created/modified build outputs, stubs, or code back to the local workspace.
+   - packets_build: Trigger remote builds (e.g. Gradle, Zephyr, Cargo, Go, CMake).
+   - packets_test: Trigger remote unit or integration tests.
+   - packets_exec: Execute arbitrary shell commands in the persistent VPS workspace.
+   - packets_logs: Retrieve execution logs for a specific remote job.
+   - packets_artifacts: Download and extract artifacts produced by a remote build into the workspace.
+   - packets_status: Check health of the remote Packets daemon and active jobs.
+   - packets_approve: Approve a pending execution ticket if policy requires confirmation.
+4. **Always Sync Before Building**: Before executing a remote build, test, or command, run packets_sync to ensure the remote persistent workspace matches local source changes.
+5. **Pull Artifacts When Done**: When a build or code generator produces new files (APKs, firmware binaries, OpenAPI stubs), run packets_pull or packets_artifacts to bring outputs into the local workspace.
+6. **Request Approval for Dangerous Operations**: For destructive file edits or production-facing operations, inform the user and request confirmation.
 `
 
 func GenerateInstructions(projectDir string) error {
@@ -44,7 +50,9 @@ func GenerateInstructions(projectDir string) error {
 	cursorDir := filepath.Join(absDir, ".cursor", "rules")
 	_ = os.MkdirAll(cursorDir, 0o755)
 	cursorRule := "---\ndescription: Packets Remote Execution Rules\nglobs: *\n---\n" + AgentsTemplate
-	_ = os.WriteFile(filepath.Join(cursorDir, "packets.mdc"), []byte(cursorRule), 0o644)
+	if err := os.WriteFile(filepath.Join(cursorDir, "packets.mdc"), []byte(cursorRule), 0o644); err != nil {
+		return fmt.Errorf("write packets.mdc: %w", err)
+	}
 
 	// 3. Write .vscode/mcp.json snippet
 	vscodeDir := filepath.Join(absDir, ".vscode")
@@ -57,8 +65,13 @@ func GenerateInstructions(projectDir string) error {
 			},
 		},
 	}
-	mcpData, _ := json.MarshalIndent(mcpConfig, "", "  ")
-	_ = os.WriteFile(filepath.Join(vscodeDir, "mcp.json"), mcpData, 0o644)
+	mcpData, err := json.MarshalIndent(mcpConfig, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal mcp.json: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(vscodeDir, "mcp.json"), mcpData, 0o644); err != nil {
+		return fmt.Errorf("write mcp.json: %w", err)
+	}
 
 	return nil
 }

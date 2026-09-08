@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/config"
@@ -14,8 +15,30 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+type bearerTokenAuth struct {
+	token string
+}
+
+func (b bearerTokenAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{
+		"authorization": "Bearer " + b.token,
+	}, nil
+}
+
+func (b bearerTokenAuth) RequireTransportSecurity() bool {
+	return false
+}
+
 func DialScheduler(ctx context.Context, cfg *config.Config) (*grpc.ClientConn, error) {
-	addr := cfg.OracleVMTailscaleHost + cfg.SchedulerAddr()
+	host := cfg.OracleVMTailscaleHost
+	var addr string
+	if host == "" {
+		addr = "127.0.0.1" + cfg.SchedulerAddr()
+	} else if strings.Contains(host, ":") {
+		addr = host
+	} else {
+		addr = host + cfg.SchedulerAddr()
+	}
 
 	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -52,7 +75,16 @@ func DialScheduler(ctx context.Context, cfg *config.Config) (*grpc.ClientConn, e
 		transportCreds = insecure.NewCredentials()
 	}
 
-	conn, err := grpc.DialContext(dialCtx, addr, grpc.WithTransportCredentials(transportCreds), grpc.WithBlock())
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(transportCreds),
+		grpc.WithBlock(),
+	}
+
+	if cfg.AuthToken != "" {
+		opts = append(opts, grpc.WithPerRPCCredentials(bearerTokenAuth{token: cfg.AuthToken}))
+	}
+
+	conn, err := grpc.DialContext(dialCtx, addr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("dial scheduler (%s): %w", addr, err)
 	}

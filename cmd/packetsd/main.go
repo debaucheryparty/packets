@@ -94,8 +94,8 @@ func main() {
 
 	var serverOpts []grpc.ServerOption
 	serverOpts = append(serverOpts,
-		grpc.UnaryInterceptor(scheduler.TailscaleInterceptor()),
-		grpc.StreamInterceptor(scheduler.TailscaleStreamInterceptor()),
+		grpc.UnaryInterceptor(scheduler.AuthInterceptor(cfg.AuthToken)),
+		grpc.StreamInterceptor(scheduler.AuthStreamInterceptor(cfg.AuthToken)),
 	)
 
 	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {

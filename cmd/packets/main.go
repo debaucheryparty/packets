@@ -48,6 +48,8 @@ func main() {
 		cli.NewFirmwareCommand(cfg, logger),
 		cli.NewMCPCommand(cfg, logger),
 		cli.NewDevCommand(cfg, logger),
+		cli.NewAuthCommand(cfg, logger),
+		cli.NewPullCommand(cfg, logger),
 	)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {

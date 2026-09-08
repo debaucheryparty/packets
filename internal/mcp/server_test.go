@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -39,7 +40,7 @@ func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*Server, *grpc.C
 	grpcServer := grpc.NewServer()
 
 	tmpDir := t.TempDir()
-	store, err := storage.NewJobStore(context.Background(), ":memory:")
+	store, err := storage.NewJobStore(context.Background(), filepath.Join(tmpDir, "packets_test.db"))
 	if err != nil {
 		t.Fatalf("NewJobStore: %v", err)
 	}
@@ -163,8 +164,8 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("Unmarshal list response: %v", err)
 	}
 
-	if len(listResp.Result.Tools) != 12 {
-		t.Errorf("expected 12 tools, got %d", len(listResp.Result.Tools))
+	if len(listResp.Result.Tools) != 13 {
+		t.Errorf("expected 13 tools, got %d", len(listResp.Result.Tools))
 	}
 
 	expectedTools := map[string]bool{
@@ -179,6 +180,7 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		"packets_exec":           false,
 		"packets_logs":           false,
 		"packets_artifacts":      false,
+		"packets_pull":           false,
 		"packets_status":         false,
 	}
 
@@ -198,7 +200,10 @@ func TestMCPServer_RealMCPExecutionAndApprovalWorkflow(t *testing.T) {
 	server, _, cleanup := setupMCPTestServer(t, pe)
 	defer cleanup()
 
-	testCmd := "echo Hello remote execution"
+	testCmd := "set DUMMY=1 && echo Hello remote execution"
+	if runtime.GOOS != "windows" {
+		testCmd = "export DUMMY=1 && echo Hello remote execution"
+	}
 
 	// 1. Call packets_exec without approval ticket -> must be paused and request approval
 	res1 := callMCPTool(t, server, "packets_exec", map[string]interface{}{
@@ -269,7 +274,7 @@ func TestMCPServer_RealMCPExecutionAndApprovalWorkflow(t *testing.T) {
 
 	// Extract Job ID
 	var jobID string
-	for _, part := range strings.Split(execOutput, " ") {
+	for _, part := range strings.Fields(execOutput) {
 		if strings.HasPrefix(part, "j_") {
 			jobID = strings.TrimRight(part, ",)\r\n:")
 			break
@@ -313,10 +318,7 @@ func TestMCPServer_RealBuildAndTestExecution(t *testing.T) {
 	server, _, cleanup := setupMCPTestServer(t, pe)
 	defer cleanup()
 
-	testCmd := "cmd /c echo Build Completed"
-	if runtime.GOOS != "windows" {
-		testCmd = "echo Build Completed"
-	}
+	testCmd := "echo Build Completed"
 
 	// 1. packets_build
 	resBuild := callMCPTool(t, server, "packets_build", map[string]interface{}{
@@ -334,10 +336,7 @@ func TestMCPServer_RealBuildAndTestExecution(t *testing.T) {
 	}
 
 	// 2. packets_test
-	testCmd2 := "cmd /c echo Test Passed"
-	if runtime.GOOS != "windows" {
-		testCmd2 = "echo Test Passed"
-	}
+	testCmd2 := "echo Test Passed"
 	resTest := callMCPTool(t, server, "packets_test", map[string]interface{}{
 		"command":   testCmd2,
 		"toolchain": "custom",
@@ -367,3 +366,43 @@ func TestMCPServer_RemoteEnvCheckViaGRPC(t *testing.T) {
 		t.Errorf("expected all_ready in response, got: %s", resCheck.Content[0].Text)
 	}
 }
+
+func TestMCPServer_ProgressNotification(t *testing.T) {
+	cfg := &config.Config{SchedulerGRPCPort: "50051"}
+	server := NewServer(cfg, nil, ".")
+
+	var out bytes.Buffer
+	// Set writer through running empty reader or directly
+	server.writer = &out
+
+	server.SendProgress("token-abc", 42, 100, "Gradle assembleDebug running")
+
+	var notif struct {
+		JSONRPC string `json:"jsonrpc"`
+		Method  string `json:"method"`
+		Params  struct {
+			ProgressToken string  `json:"progressToken"`
+			Progress      float64 `json:"progress"`
+			Total         float64 `json:"total"`
+			Message       string  `json:"message"`
+		} `json:"params"`
+	}
+
+	if err := json.Unmarshal(out.Bytes(), &notif); err != nil {
+		t.Fatalf("Unmarshal progress notification: %v\nOutput: %s", err, out.String())
+	}
+
+	if notif.Method != "notifications/progress" {
+		t.Errorf("expected notifications/progress, got %s", notif.Method)
+	}
+	if notif.Params.ProgressToken != "token-abc" {
+		t.Errorf("expected token-abc, got %s", notif.Params.ProgressToken)
+	}
+	if notif.Params.Progress != 42 {
+		t.Errorf("expected progress 42, got %f", notif.Params.Progress)
+	}
+	if notif.Params.Message != "Gradle assembleDebug running" {
+		t.Errorf("expected message, got %s", notif.Params.Message)
+	}
+}
+

@@ -674,10 +674,29 @@ func newAndroidConnectCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 			port, _ := cmd.Flags().GetInt("port")
 
 			if host == "" {
-				host = os.Getenv("ORACLE_VM_TAILSCALE_HOSTNAME")
-				if host == "" {
-					return fmt.Errorf("missing remote host: specify --host=<tailscale-ip> or set ORACLE_VM_TAILSCALE_HOSTNAME")
+				if cfg.OracleVMTailscaleHost != "" {
+					h := cfg.OracleVMTailscaleHost
+					if idx := strings.Index(h, ":"); idx != -1 {
+						h = h[:idx]
+					}
+					host = h
 				}
+			}
+			if host == "" {
+				prof, _ := config.LoadProfile()
+				if prof != nil && prof.ServerAddr != "" {
+					h := prof.ServerAddr
+					if idx := strings.Index(h, ":"); idx != -1 {
+						h = h[:idx]
+					}
+					host = h
+				}
+			}
+			if host == "" {
+				host = os.Getenv("ORACLE_VM_TAILSCALE_HOSTNAME")
+			}
+			if host == "" {
+				host = "127.0.0.1"
 			}
 
 			target := fmt.Sprintf("%s:%d", host, port)
