@@ -2,11 +2,15 @@ package scheduler
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/debaucheryparty/packets/internal/policy"
+	"github.com/debaucheryparty/packets/internal/storage"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
+	pb "github.com/debaucheryparty/packets/proto/v1"
 )
 
 func TestLogBrokerPubSub(t *testing.T) {
@@ -77,3 +81,106 @@ func TestQuotaLimiter(t *testing.T) {
 		t.Fatalf("expected acquire after release to succeed, got: %v", err)
 	}
 }
+
+func TestSubmitJob_ProjectIDPropagation(t *testing.T) {
+	ctx := context.Background()
+	store, err := storage.NewJobStore(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	dispatcher := NewDispatcher(slog.Default(), store, nil, nil, nil, NewLogBroker())
+	srv := NewServer(dispatcher, store, NewLogBroker(), nil, nil)
+
+	resp, err := srv.SubmitJob(ctx, &pb.SubmitJobRequest{
+		CacheKey:    "test-cache-key-1",
+		Toolchain:   "go",
+		ProjectId:   "proj-alpha-123",
+		CommandArgs: []string{"test"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitJob failed: %v", err)
+	}
+
+	job, err := store.GetJob(ctx, apitypes.JobID(resp.JobId))
+	if err != nil {
+		t.Fatalf("GetJob failed: %v", err)
+	}
+
+	if job.ProjectID != "proj-alpha-123" {
+		t.Errorf("expected ProjectID 'proj-alpha-123', got %q", job.ProjectID)
+	}
+}
+
+func TestSubmitJob_EnforcesPolicyApproval(t *testing.T) {
+	ctx := context.Background()
+	store, err := storage.NewJobStore(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	dispatcher := NewDispatcher(slog.Default(), store, nil, nil, nil, NewLogBroker())
+	srv := NewServer(dispatcher, store, NewLogBroker(), nil, nil)
+	pe := policy.NewPolicyEngine(policy.ApprovalAlways)
+	srv.SetPolicyEngine(pe)
+
+	// 1. Direct call without approval ticket -> rejected at Scheduler API
+	_, err = srv.SubmitJob(ctx, &pb.SubmitJobRequest{
+		CacheKey:    "test-cache-key-policy",
+		Toolchain:   "go",
+		ProjectId:   "proj-alpha-123",
+		CommandArgs: []string{"test"},
+	})
+	if err == nil {
+		t.Fatal("expected PermissionDenied error when no approval ticket is provided")
+	}
+
+	// 2. Human approval workflow produces ticket
+	ec := policy.ExecutionContext{
+		User:        "default",
+		ProjectID:   "proj-alpha-123",
+		WorkspaceID: "proj-alpha-123",
+		Command:     "test",
+		Args:        []string{"test"},
+		Action:      "BUILD",
+	}
+	pending, err := pe.CreatePendingApproval(ec)
+	if err != nil {
+		t.Fatalf("CreatePendingApproval: %v", err)
+	}
+	ticket, err := pe.ApprovePending(pending.ID)
+	if err != nil {
+		t.Fatalf("ApprovePending: %v", err)
+	}
+
+	// 3. Direct call with valid ticket -> succeeds
+	resp, err := srv.SubmitJob(ctx, &pb.SubmitJobRequest{
+		CacheKey:       "test-cache-key-policy-2",
+		Toolchain:      "go",
+		ProjectId:      "proj-alpha-123",
+		CommandArgs:    []string{"test"},
+		ApprovalTicket: ticket.ID,
+	})
+	if err != nil {
+		t.Fatalf("expected SubmitJob with valid ticket to succeed, got: %v", err)
+	}
+	if resp.JobId == "" {
+		t.Fatal("expected non-empty JobId")
+	}
+
+	// 4. Reuse ticket -> rejected (single-use)
+	_, err = srv.SubmitJob(ctx, &pb.SubmitJobRequest{
+		CacheKey:       "test-cache-key-policy-3",
+		Toolchain:      "go",
+		ProjectId:      "proj-alpha-123",
+		CommandArgs:    []string{"test"},
+		ApprovalTicket: ticket.ID,
+	})
+	if err == nil {
+		t.Fatal("expected PermissionDenied on reused ticket")
+	}
+}
+
+

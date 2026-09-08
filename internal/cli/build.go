@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/config"
+	"github.com/debaucheryparty/packets/internal/project"
 	"github.com/debaucheryparty/packets/internal/shim"
 	"github.com/debaucheryparty/packets/internal/toolchain"
 	"github.com/debaucheryparty/packets/internal/workspace"
@@ -145,10 +146,19 @@ func executeViaScheduler(
 		logger.InfoContext(ctx, "workspace ready", slog.String("snapshot_ref", snapshotRef))
 	}
 
-	cacheKey, err := GenerateCacheKey(ctx, dir, string(def.Name), string(runner), string(sourceMode), snapshotRef)
+	projectID := project.ResolveProjectID(dir)
+	cacheKey, err := GenerateCacheKey(ctx, CacheKeyInputs{
+		ProjectID:   projectID,
+		Dir:         dir,
+		Toolchain:   string(def.Name),
+		Runner:      string(runner),
+		SourceMode:  string(sourceMode),
+		SnapshotRef: snapshotRef,
+		CommandArgs: args,
+	})
 	if err != nil {
 		logger.WarnContext(ctx, "cache key generation failed, using fallback", slog.String("error", err.Error()))
-		cacheKey = fmt.Sprintf("%s:%s:%s", def.Name, runner, snapshotRef)
+		cacheKey = fmt.Sprintf("%s:%s:%s:%s", projectID, def.Name, runner, snapshotRef)
 	}
 
 	client := pb.NewSchedulerClient(conn)
@@ -162,6 +172,7 @@ func executeViaScheduler(
 		SnapshotRef:   snapshotRef,
 		CommandArgs:   args,
 		ArtifactPaths: artifactPaths,
+		ProjectId:     projectID,
 	})
 	if err != nil {
 		return fmt.Errorf("SubmitJob: %w", err)

@@ -1,0 +1,1 @@
+ALTER TABLE jobs ADD COLUMN project_id TEXT NOT NULL DEFAULT '';

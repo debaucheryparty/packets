@@ -33,7 +33,7 @@ func TestJobStore_CreateAndGet(t *testing.T) {
 		{
 			name: "go job",
 			job: apitypes.Job{
-				ID: "j_001", Toolchain: apitypes.ToolchainGo,
+				ID: "j_001", ProjectID: "proj-go-1", Toolchain: apitypes.ToolchainGo,
 				CacheKey: "abc123", State: apitypes.JobStatePending,
 				Provider: apitypes.ProviderDockerWorker, SubmittedAt: now,
 			},
@@ -41,7 +41,7 @@ func TestJobStore_CreateAndGet(t *testing.T) {
 		{
 			name: "python job",
 			job: apitypes.Job{
-				ID: "j_002", Toolchain: apitypes.ToolchainPython,
+				ID: "j_002", ProjectID: "proj-py-2", Toolchain: apitypes.ToolchainPython,
 				CacheKey: "def456", State: apitypes.JobStatePending,
 				Provider: apitypes.ProviderDockerWorker, SubmittedAt: now,
 			},
@@ -60,6 +60,9 @@ func TestJobStore_CreateAndGet(t *testing.T) {
 			}
 			if got.ID != tt.job.ID {
 				t.Errorf("ID = %q, want %q", got.ID, tt.job.ID)
+			}
+			if got.ProjectID != tt.job.ProjectID {
+				t.Errorf("ProjectID = %q, want %q", got.ProjectID, tt.job.ProjectID)
 			}
 			if got.Toolchain != tt.job.Toolchain {
 				t.Errorf("Toolchain = %q, want %q", got.Toolchain, tt.job.Toolchain)

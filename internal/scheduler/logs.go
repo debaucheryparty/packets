@@ -49,21 +49,31 @@ func (b *LogBroker) Subscribe(ctx context.Context, jobID apitypes.JobID) ([]stri
 	copy(existing, b.buffers[jobID])
 
 	ch := make(chan string, 100)
+	if b.closed[jobID] {
+		close(ch)
+		return existing, ch, func() {}
+	}
+
 	if _, ok := b.subscribers[jobID]; !ok {
 		b.subscribers[jobID] = make(map[chan string]struct{})
 	}
 	b.subscribers[jobID][ch] = struct{}{}
 
+	var once sync.Once
 	cleanup := func() {
-		b.mu.Lock()
-		defer b.mu.Unlock()
-		if subs, ok := b.subscribers[jobID]; ok {
-			delete(subs, ch)
-			if len(subs) == 0 {
-				delete(b.subscribers, jobID)
+		once.Do(func() {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			if subs, ok := b.subscribers[jobID]; ok {
+				if _, exists := subs[ch]; exists {
+					delete(subs, ch)
+					close(ch)
+				}
+				if len(subs) == 0 {
+					delete(b.subscribers, jobID)
+				}
 			}
-		}
-		close(ch)
+		})
 	}
 
 	return existing, ch, cleanup
@@ -73,6 +83,12 @@ func (b *LogBroker) CloseJob(jobID apitypes.JobID) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.closed[jobID] = true
+	if subs, ok := b.subscribers[jobID]; ok {
+		for ch := range subs {
+			close(ch)
+		}
+		delete(b.subscribers, jobID)
+	}
 }
 
 func (b *LogBroker) IsClosed(jobID apitypes.JobID) bool {

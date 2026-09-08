@@ -13,6 +13,7 @@ import (
 
 	"github.com/debaucheryparty/packets/internal/android"
 	"github.com/debaucheryparty/packets/internal/config"
+	"github.com/debaucheryparty/packets/internal/project"
 	"github.com/debaucheryparty/packets/internal/workspace"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 	pb "github.com/debaucheryparty/packets/proto/v1"
@@ -106,6 +107,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 				SourceMode:    string(apitypes.SourceModeWorkspace),
 				CommandArgs:   []string{gradleTask},
 				ArtifactPaths: []string{artifactGlob},
+				ProjectId:     project.ResolveProjectID(dir),
 			})
 			if err != nil {
 				return fmt.Errorf("submit job: %w", err)
@@ -339,6 +341,7 @@ func newAndroidTestCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comma
 				Runner:      string(apitypes.RunnerDocker),
 				SourceMode:  string(apitypes.SourceModeWorkspace),
 				CommandArgs: []string{"connectedAndroidTest"},
+				ProjectId:   project.ResolveProjectID(dir),
 			})
 			if err != nil {
 				return fmt.Errorf("submit job: %w", err)
@@ -734,6 +737,7 @@ func runBuildInstallLaunch(
 		SourceMode:    string(apitypes.SourceModeWorkspace),
 		CommandArgs:   []string{gradleTask},
 		ArtifactPaths: []string{artifactGlob},
+		ProjectId:     project.ResolveProjectID(projectRoot),
 	})
 	if err != nil {
 		return fmt.Errorf("submit job: %w", err)

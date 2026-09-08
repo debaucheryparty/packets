@@ -180,8 +180,10 @@ type SubmitJobRequest struct {
 	SourceMode    string                 `protobuf:"bytes,6,opt,name=source_mode,json=sourceMode,proto3" json:"source_mode,omitempty"`
 	CommandArgs   []string               `protobuf:"bytes,7,rep,name=command_args,json=commandArgs,proto3" json:"command_args,omitempty"`
 	ArtifactPaths []string               `protobuf:"bytes,8,rep,name=artifact_paths,json=artifactPaths,proto3" json:"artifact_paths,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	ProjectId      string                 `protobuf:"bytes,9,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	ApprovalTicket string                 `protobuf:"bytes,10,opt,name=approval_ticket,json=approvalTicket,proto3" json:"approval_ticket,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *SubmitJobRequest) Reset() {
@@ -268,6 +270,20 @@ func (x *SubmitJobRequest) GetArtifactPaths() []string {
 		return x.ArtifactPaths
 	}
 	return nil
+}
+
+func (x *SubmitJobRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *SubmitJobRequest) GetApprovalTicket() string {
+	if x != nil {
+		return x.ApprovalTicket
+	}
+	return ""
 }
 
 type SubmitJobResponse struct {

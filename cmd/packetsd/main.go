@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/config"
+	"github.com/debaucheryparty/packets/internal/environment"
 	"github.com/debaucheryparty/packets/internal/provider"
 	"github.com/debaucheryparty/packets/internal/scheduler"
 	"github.com/debaucheryparty/packets/internal/storage"
@@ -109,6 +110,7 @@ func main() {
 
 	grpcServer := grpc.NewServer(serverOpts...)
 	pb.RegisterSchedulerServer(grpcServer, srv)
+	pb.RegisterEnvironmentServer(grpcServer, environment.NewServer(nil))
 
 	if objectStore != nil {
 		wsSrv := workspace.NewServer(objectStore, registry)

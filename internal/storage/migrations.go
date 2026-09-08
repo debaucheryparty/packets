@@ -12,6 +12,7 @@ type migration struct {
 
 var migrations = []migration{
 	{2, migration002},
+	{3, migration003},
 }
 
 func runMigrations(db *sql.DB) error {

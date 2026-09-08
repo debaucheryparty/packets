@@ -22,6 +22,14 @@ func normalizePath(p string) string {
 func ScanWorkspace(dir string, extraIgnore []string) (*apitypes.WorkspaceManifest, error) {
 	var files []apitypes.WorkspaceFile
 
+	combinedIgnore := append([]string{}, extraIgnore...)
+	if gitignorePats, err := ParseIgnoreFile(filepath.Join(dir, ".gitignore")); err == nil {
+		combinedIgnore = append(combinedIgnore, gitignorePats...)
+	}
+	if packetsPats, err := ParseIgnoreFile(filepath.Join(dir, ".packetsignore")); err == nil {
+		combinedIgnore = append(combinedIgnore, packetsPats...)
+	}
+
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -37,7 +45,7 @@ func ScanWorkspace(dir string, extraIgnore []string) (*apitypes.WorkspaceManifes
 
 		normRel := normalizePath(rel)
 
-		if ShouldIgnore(normRel, extraIgnore) {
+		if ShouldIgnore(normRel, combinedIgnore) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}

@@ -19,6 +19,9 @@ var migration001 string
 //go:embed migrations/002_execution_spec.sql
 var migration002 string
 
+//go:embed migrations/003_project_id.sql
+var migration003 string
+
 var (
 	ErrJobNotFound = errors.New("job not found")
 	ErrCacheMiss   = errors.New("cache miss")
@@ -57,10 +60,10 @@ func (s *JobStore) CreateJob(ctx context.Context, job apitypes.Job) error {
 
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO jobs
-		 (id, toolchain, cache_key, state, provider, runner, source_mode, snapshot_ref,
+		 (id, project_id, toolchain, cache_key, state, provider, runner, source_mode, snapshot_ref,
 		  command_args, artifact_paths, image, error, owner, submitted_at, artifact_ref)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		string(job.ID), string(job.Toolchain), job.CacheKey,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		string(job.ID), job.ProjectID, string(job.Toolchain), job.CacheKey,
 		int(job.State), string(job.Provider), string(job.Runner), string(job.SourceMode),
 		job.SnapshotRef, string(cmdArgs), string(artifactPaths),
 		job.Image, job.Error, job.Owner,
@@ -74,7 +77,7 @@ func (s *JobStore) CreateJob(ctx context.Context, job apitypes.Job) error {
 
 func (s *JobStore) GetJob(ctx context.Context, id apitypes.JobID) (apitypes.Job, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, toolchain, cache_key, state, provider, runner, source_mode, snapshot_ref,
+		`SELECT id, project_id, toolchain, cache_key, state, provider, runner, source_mode, snapshot_ref,
 		        command_args, artifact_paths, image, error, owner,
 		        submitted_at, completed_at, artifact_ref
 		 FROM jobs WHERE id = ?`, string(id),
@@ -158,7 +161,7 @@ func (s *JobStore) ListJobsByState(ctx context.Context, states ...apitypes.JobSt
 		args[i] = int(st)
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, toolchain, cache_key, state, provider, runner, source_mode, snapshot_ref,
+		`SELECT id, project_id, toolchain, cache_key, state, provider, runner, source_mode, snapshot_ref,
 		        command_args, artifact_paths, image, error, owner,
 		        submitted_at, completed_at, artifact_ref
 		 FROM jobs WHERE state IN (`+string(placeholders)+`)
@@ -182,7 +185,7 @@ func (s *JobStore) ListJobsByState(ctx context.Context, states ...apitypes.JobSt
 
 func (s *JobStore) ListRecentJobs(ctx context.Context, limit int) ([]apitypes.Job, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, toolchain, cache_key, state, provider, runner, source_mode, snapshot_ref,
+		`SELECT id, project_id, toolchain, cache_key, state, provider, runner, source_mode, snapshot_ref,
 		        command_args, artifact_paths, image, error, owner,
 		        submitted_at, completed_at, artifact_ref
 		 FROM jobs ORDER BY submitted_at DESC LIMIT ?`, limit,
@@ -263,12 +266,12 @@ func (s *JobStore) SetJobArtifact(ctx context.Context, id apitypes.JobID, ref ap
 
 func scanJob(row *sql.Row) (apitypes.Job, error) {
 	var j apitypes.Job
-	var id, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef string
+	var id, projectID, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef string
 	var state int
 	var completedAt *time.Time
 
 	err := row.Scan(
-		&id, &tc, &j.CacheKey, &state, &provider, &runner, &sourceMode, &snapshotRef,
+		&id, &projectID, &tc, &j.CacheKey, &state, &provider, &runner, &sourceMode, &snapshotRef,
 		&cmdArgs, &artPaths, &image, &errMsg, &owner,
 		&j.SubmittedAt, &completedAt, &artifactRef,
 	)
@@ -278,28 +281,29 @@ func scanJob(row *sql.Row) (apitypes.Job, error) {
 	if err != nil {
 		return j, fmt.Errorf("scanJob: %w", err)
 	}
-	return hydrateJob(j, id, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef, state, completedAt), nil
+	return hydrateJob(j, id, projectID, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef, state, completedAt), nil
 }
 
 func scanJobRows(rows *sql.Rows) (apitypes.Job, error) {
 	var j apitypes.Job
-	var id, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef string
+	var id, projectID, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef string
 	var state int
 	var completedAt *time.Time
 
 	err := rows.Scan(
-		&id, &tc, &j.CacheKey, &state, &provider, &runner, &sourceMode, &snapshotRef,
+		&id, &projectID, &tc, &j.CacheKey, &state, &provider, &runner, &sourceMode, &snapshotRef,
 		&cmdArgs, &artPaths, &image, &errMsg, &owner,
 		&j.SubmittedAt, &completedAt, &artifactRef,
 	)
 	if err != nil {
 		return j, err
 	}
-	return hydrateJob(j, id, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef, state, completedAt), nil
+	return hydrateJob(j, id, projectID, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef, state, completedAt), nil
 }
 
-func hydrateJob(j apitypes.Job, id, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef string, state int, completedAt *time.Time) apitypes.Job {
+func hydrateJob(j apitypes.Job, id, projectID, tc, provider, runner, sourceMode, snapshotRef, cmdArgs, artPaths, image, errMsg, owner, artifactRef string, state int, completedAt *time.Time) apitypes.Job {
 	j.ID = apitypes.JobID(id)
+	j.ProjectID = projectID
 	j.Toolchain = apitypes.Toolchain(tc)
 	j.State = apitypes.JobState(state)
 	j.Provider = apitypes.ProviderName(provider)
