@@ -171,15 +171,15 @@ func (x *ClearCacheResponse) GetClearedCount() int32 {
 }
 
 type SubmitJobRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CacheKey      string                 `protobuf:"bytes,1,opt,name=cache_key,json=cacheKey,proto3" json:"cache_key,omitempty"`
-	Toolchain     string                 `protobuf:"bytes,2,opt,name=toolchain,proto3" json:"toolchain,omitempty"`
-	SnapshotRef   string                 `protobuf:"bytes,3,opt,name=snapshot_ref,json=snapshotRef,proto3" json:"snapshot_ref,omitempty"`
-	DockerImage   string                 `protobuf:"bytes,4,opt,name=docker_image,json=dockerImage,proto3" json:"docker_image,omitempty"`
-	Runner        string                 `protobuf:"bytes,5,opt,name=runner,proto3" json:"runner,omitempty"`
-	SourceMode    string                 `protobuf:"bytes,6,opt,name=source_mode,json=sourceMode,proto3" json:"source_mode,omitempty"`
-	CommandArgs   []string               `protobuf:"bytes,7,rep,name=command_args,json=commandArgs,proto3" json:"command_args,omitempty"`
-	ArtifactPaths []string               `protobuf:"bytes,8,rep,name=artifact_paths,json=artifactPaths,proto3" json:"artifact_paths,omitempty"`
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	CacheKey       string                 `protobuf:"bytes,1,opt,name=cache_key,json=cacheKey,proto3" json:"cache_key,omitempty"`
+	Toolchain      string                 `protobuf:"bytes,2,opt,name=toolchain,proto3" json:"toolchain,omitempty"`
+	SnapshotRef    string                 `protobuf:"bytes,3,opt,name=snapshot_ref,json=snapshotRef,proto3" json:"snapshot_ref,omitempty"`
+	DockerImage    string                 `protobuf:"bytes,4,opt,name=docker_image,json=dockerImage,proto3" json:"docker_image,omitempty"`
+	Runner         string                 `protobuf:"bytes,5,opt,name=runner,proto3" json:"runner,omitempty"`
+	SourceMode     string                 `protobuf:"bytes,6,opt,name=source_mode,json=sourceMode,proto3" json:"source_mode,omitempty"`
+	CommandArgs    []string               `protobuf:"bytes,7,rep,name=command_args,json=commandArgs,proto3" json:"command_args,omitempty"`
+	ArtifactPaths  []string               `protobuf:"bytes,8,rep,name=artifact_paths,json=artifactPaths,proto3" json:"artifact_paths,omitempty"`
 	ProjectId      string                 `protobuf:"bytes,9,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	ApprovalTicket string                 `protobuf:"bytes,10,opt,name=approval_ticket,json=approvalTicket,proto3" json:"approval_ticket,omitempty"`
 	unknownFields  protoimpl.UnknownFields

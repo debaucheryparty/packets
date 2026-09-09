@@ -135,7 +135,6 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 }
 
 func verifyExtractedRootHash(targetDir, expectedHash, manifestMarkerFile string) error {
-
 	markerName := filepath.Base(manifestMarkerFile)
 	got, err := ScanWorkspace(targetDir, []string{markerName})
 	if err != nil {

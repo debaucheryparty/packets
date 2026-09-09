@@ -132,6 +132,7 @@ type UnimplementedEnvironmentServer struct{}
 func (UnimplementedEnvironmentServer) Check(context.Context, *EnvCheckRequest) (*EnvCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Check not implemented")
 }
+
 func (UnimplementedEnvironmentServer) Prepare(*PrepareRequest, grpc.ServerStreamingServer[PrepareProgressLine]) error {
 	return status.Error(codes.Unimplemented, "method Prepare not implemented")
 }

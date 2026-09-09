@@ -82,7 +82,6 @@ func pullLatestProjectArtifacts(ctx context.Context, cfg *config.Config, logger 
 	defer conn.Close()
 
 	if err := PullAndExtractArtifact(ctx, cfg, logger, projectID, destDir); err != nil {
-
 		return fmt.Errorf("no specific job specified; please pass --job <job-id> (e.g. packets pull --job <id>) or run after a build: %w", err)
 	}
 	return nil

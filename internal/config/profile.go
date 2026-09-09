@@ -36,7 +36,6 @@ func GetProfilePath() (string, error) {
 }
 
 func LoadProfile() (*Profile, error) {
-
 	if data, err := os.ReadFile(filepath.Join(".packets", "config.yaml")); err == nil {
 		var p Profile
 		if err := yaml.Unmarshal(data, &p); err == nil {

@@ -173,7 +173,6 @@ func (s *Server) StreamJobLogs(req *pb.StreamJobLogsRequest, stream pb.Scheduler
 			return ctx.Err()
 		case line, ok := <-ch:
 			if !ok {
-
 				return nil
 			}
 			if err := stream.Send(&pb.JobLogLine{Content: line}); err != nil {

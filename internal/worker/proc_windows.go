@@ -8,7 +8,6 @@ import (
 )
 
 func prepareProcessGroup(cmd *exec.Cmd) {
-
 }
 
 func killProcessTree(cmd *exec.Cmd) error {

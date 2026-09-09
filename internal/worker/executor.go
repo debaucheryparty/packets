@@ -70,6 +70,7 @@ func (e *Executor) SetWorkspaceDir(dir string) {
 	e.workspaceDir = dir
 	_ = os.MkdirAll(dir, 0o755)
 }
+
 func (e *Executor) Execute(ctx context.Context, job apitypes.Job) (apitypes.ExecutionResult, error) {
 	var srcDir string
 	var cleanup func()

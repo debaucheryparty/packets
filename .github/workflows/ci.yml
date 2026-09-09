@@ -15,7 +15,7 @@ jobs:
           cache: true
       - name: Install tools
         run: |
-          go install mvdan.cc/gofumpt@latest
+          go install mvdan.cc/gofumpt@v0.11.0
 
       - name: Check formatting
         run: |
