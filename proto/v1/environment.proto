@@ -1,0 +1,54 @@
+syntax = "proto3";
+package packets.v1;
+
+option go_package = "github.com/debaucheryparty/packets/proto/v1";
+
+service Environment {
+  rpc Check(EnvCheckRequest) returns (EnvCheckResponse);
+  rpc Prepare(PrepareRequest) returns (stream PrepareProgressLine);
+}
+
+message EnvCheckRequest {
+  string project_id = 1;
+  string project_root = 2;
+  repeated Component components = 3;
+}
+
+message Component {
+  string type = 1;
+  string name = 2;
+  string path = 3;
+  string confidence = 4;
+  map<string, string> metadata = 5;
+}
+
+message ToolchainRequirement {
+  string name = 1;
+  string version = 2;
+  string status = 3;
+  string details = 4;
+  bool can_prepare = 5;
+  string prepare_cmd = 6;
+}
+
+message ComponentRequirements {
+  repeated ToolchainRequirement requirements = 1;
+}
+
+message EnvCheckResponse {
+  string project_root = 1;
+  map<string, ComponentRequirements> components = 2;
+  bool all_ready = 3;
+}
+
+message PrepareRequest {
+  string project_id = 1;
+  string project_root = 2;
+  repeated Component components = 3;
+}
+
+message PrepareProgressLine {
+  string content = 1;
+  bool done = 2;
+  bool error = 3;
+}

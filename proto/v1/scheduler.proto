@@ -28,6 +28,8 @@ message SubmitJobRequest {
   string source_mode = 6;
   repeated string command_args = 7;
   repeated string artifact_paths = 8;
+  string project_id = 9;
+  string approval_ticket = 10;
 }
 
 message SubmitJobResponse {

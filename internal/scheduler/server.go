@@ -4,22 +4,26 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
+	"github.com/debaucheryparty/packets/internal/policy"
 	"github.com/debaucheryparty/packets/internal/provider"
 	"github.com/debaucheryparty/packets/internal/storage"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 	pb "github.com/debaucheryparty/packets/proto/v1"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
 type Server struct {
 	pb.UnimplementedSchedulerServer
-	dispatcher  *Dispatcher
-	store       *storage.JobStore
-	logBroker   *LogBroker
-	objectStore storage.ObjectStore
-	providers   map[apitypes.ProviderName]provider.BuildProvider
+	dispatcher   *Dispatcher
+	store        *storage.JobStore
+	logBroker    *LogBroker
+	objectStore  storage.ObjectStore
+	providers    map[apitypes.ProviderName]provider.BuildProvider
+	policyEngine *policy.PolicyEngine
 }
 
 func NewServer(dispatcher *Dispatcher, store *storage.JobStore, logBroker *LogBroker, objectStore storage.ObjectStore, providers map[apitypes.ProviderName]provider.BuildProvider) *Server {
@@ -30,6 +34,10 @@ func NewServer(dispatcher *Dispatcher, store *storage.JobStore, logBroker *LogBr
 		objectStore: objectStore,
 		providers:   providers,
 	}
+}
+
+func (s *Server) SetPolicyEngine(pe *policy.PolicyEngine) {
+	s.policyEngine = pe
 }
 
 func (s *Server) SubmitJob(ctx context.Context, req *pb.SubmitJobRequest) (*pb.SubmitJobResponse, error) {
@@ -45,6 +53,47 @@ func (s *Server) SubmitJob(ctx context.Context, req *pb.SubmitJobRequest) (*pb.S
 		owner = u
 	}
 
+	ticketID := req.GetApprovalTicket()
+	projectID := req.GetProjectId()
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if ticketID == "" {
+			if vals := md.Get("x-approval-ticket"); len(vals) > 0 {
+				ticketID = vals[0]
+			}
+		}
+		if projectID == "" {
+			if vals := md.Get("x-project-id"); len(vals) > 0 {
+				projectID = vals[0]
+			}
+		}
+	}
+
+	// Enforce policy & human approval check at the Scheduler API boundary (Priority 5)
+	if s.policyEngine != nil {
+		action := "BUILD"
+		if req.Toolchain == string(apitypes.ToolchainExec) {
+			action = "EXEC"
+		}
+		cmdName := req.Toolchain
+		if len(req.CommandArgs) > 0 {
+			cmdName = strings.Join(req.CommandArgs, " ")
+		}
+		ec := policy.ExecutionContext{
+			User:         owner,
+			ProjectID:    projectID,
+			WorkspaceID:  projectID,
+			SnapshotHash: req.SnapshotRef,
+			Command:      cmdName,
+			Args:         req.CommandArgs,
+			Action:       action,
+		}
+		if s.policyEngine.RequiresApprovalFor(ec) {
+			if err := s.policyEngine.ValidateAndConsumeTicket(ticketID, ec); err != nil {
+				return nil, status.Errorf(codes.PermissionDenied, "policy rejection: %v", err)
+			}
+		}
+	}
+
 	buildReq := apitypes.BuildRequest{
 		Toolchain:     apitypes.Toolchain(req.Toolchain),
 		DockerImage:   req.DockerImage,
@@ -53,6 +102,7 @@ func (s *Server) SubmitJob(ctx context.Context, req *pb.SubmitJobRequest) (*pb.S
 		SnapshotRef:   req.SnapshotRef,
 		CommandArgs:   req.CommandArgs,
 		ArtifactPaths: req.ArtifactPaths,
+		ProjectID:     projectID,
 	}
 
 	jobID, hit, err := s.dispatcher.Submit(ctx, buildReq, req.CacheKey, owner)
@@ -110,7 +160,13 @@ func (s *Server) StreamJobLogs(req *pb.StreamJobLogsRequest, stream pb.Scheduler
 		}
 	}
 
+	// If job already closed, return immediately after draining existing lines
 	if s.logBroker.IsClosed(jobID) {
+		return nil
+	}
+
+	// Also check DB state in case log broker was not used for this job
+	if job, err := s.store.GetJob(ctx, jobID); err == nil && (job.State == apitypes.JobStateSucceeded || job.State == apitypes.JobStateFailed) {
 		return nil
 	}
 
@@ -120,13 +176,11 @@ func (s *Server) StreamJobLogs(req *pb.StreamJobLogsRequest, stream pb.Scheduler
 			return ctx.Err()
 		case line, ok := <-ch:
 			if !ok {
+				// Channel was closed by CloseJob - job is done
 				return nil
 			}
 			if err := stream.Send(&pb.JobLogLine{Content: line}); err != nil {
 				return err
-			}
-			if s.logBroker.IsClosed(jobID) && len(ch) == 0 {
-				return nil
 			}
 		}
 	}
@@ -140,7 +194,12 @@ func (s *Server) DownloadArtifact(req *pb.DownloadArtifactRequest, stream pb.Sch
 	ctx := stream.Context()
 	job, err := s.store.GetJob(ctx, apitypes.JobID(req.JobId))
 	if err != nil {
-		return status.Errorf(codes.NotFound, "job not found: %v", err)
+		projJob, projErr := s.store.GetLatestProjectArtifactJob(ctx, req.JobId)
+		if projErr == nil {
+			job = projJob
+		} else {
+			return status.Errorf(codes.NotFound, "job not found: %v", err)
+		}
 	}
 
 	if job.State != apitypes.JobStateSucceeded {

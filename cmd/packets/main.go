@@ -36,12 +36,20 @@ func main() {
 
 	rootCmd.AddCommand(
 		cli.NewBuildCommand(cfg, logger),
+		cli.NewExecCommand(cfg, logger),
+		cli.NewSyncCommand(cfg, logger),
+		cli.NewEnvCommand(cfg, logger),
 		cli.NewStatusCommand(cfg, logger),
 		cli.NewCacheCommand(cfg, logger),
 		cli.NewProviderCommand(cfg, logger),
 		cli.NewLogsCommand(cfg, logger),
 		cli.NewArtifactCommand(cfg, logger),
 		cli.NewAndroidCommand(cfg, logger),
+		cli.NewFirmwareCommand(cfg, logger),
+		cli.NewMCPCommand(cfg, logger),
+		cli.NewDevCommand(cfg, logger),
+		cli.NewAuthCommand(cfg, logger),
+		cli.NewPullCommand(cfg, logger),
 	)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {

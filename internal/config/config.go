@@ -47,6 +47,7 @@ type Config struct {
 	TLSInsecureSkipVerify    bool
 	MaxConcurrentJobsPerUser int
 	MaxSubmissionsPerMinute  int
+	AuthToken                string
 }
 
 func LoadConfig(ctx context.Context) (*Config, error) {
@@ -116,6 +117,30 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 		TLSInsecureSkipVerify:    tlsInsecure,
 		MaxConcurrentJobsPerUser: maxConc,
 		MaxSubmissionsPerMinute:  maxRate,
+		AuthToken:                os.Getenv("PACKETS_AUTH_TOKEN"),
+	}
+
+	prof, _ := LoadProfile()
+	if prof != nil {
+		if cfg.AuthToken == "" {
+			cfg.AuthToken = prof.AuthToken
+		}
+		if cfg.OracleVMTailscaleHost == "" && prof.ServerAddr != "" {
+			cfg.OracleVMTailscaleHost = prof.ServerAddr
+		}
+		if !cfg.TLSEnabled && prof.TLSEnabled {
+			cfg.TLSEnabled = true
+			if cfg.TLSCertFile == "" {
+				cfg.TLSCertFile = prof.TLSCertFile
+			}
+			if cfg.TLSKeyFile == "" {
+				cfg.TLSKeyFile = prof.TLSKeyFile
+			}
+			if cfg.TLSCAFile == "" {
+				cfg.TLSCAFile = prof.TLSCAFile
+			}
+			cfg.TLSInsecureSkipVerify = prof.TLSInsecureSkipVerify
+		}
 	}
 
 	if cfg.SchedulerGRPCPort == "" {

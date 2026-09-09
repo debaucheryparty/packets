@@ -46,6 +46,7 @@ const (
 	RunnerGitHub   RunnerName = "github"
 	RunnerLocal    RunnerName = "local"
 	RunnerCircleCI RunnerName = "circleci"
+	RunnerHost     RunnerName = "host"
 )
 
 type RunnerDef struct {
@@ -105,6 +106,9 @@ const (
 	ToolchainFlutter Toolchain = "flutter"
 	ToolchainObjC    Toolchain = "objc"
 	ToolchainAndroid Toolchain = "android"
+	ToolchainZephyr  Toolchain = "zephyr"
+	ToolchainExec    Toolchain = "exec"
+	ToolchainCustom  Toolchain = "custom"
 )
 
 func (t Toolchain) String() string { return string(t) }
@@ -166,6 +170,7 @@ type JobID string
 
 type Job struct {
 	ID            JobID
+	ProjectID     string
 	Toolchain     Toolchain
 	CacheKey      string
 	State         JobState
@@ -185,6 +190,7 @@ type Job struct {
 
 type BuildRequest struct {
 	JobID         JobID
+	ProjectID     string
 	Directory     string
 	Toolchain     Toolchain
 	Args          []string

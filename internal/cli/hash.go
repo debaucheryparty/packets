@@ -7,29 +7,49 @@ import (
 	"os/exec"
 )
 
-func GenerateCacheKey(ctx context.Context, dir, toolchain, runner, sourceMode, snapshotRef string) (string, error) {
-	h := sha256.New()
-	h.Write([]byte(toolchain))
-	h.Write([]byte(runner))
-	h.Write([]byte(sourceMode))
+type CacheKeyInputs struct {
+	ProjectID   string
+	Dir         string
+	Toolchain   string
+	Runner      string
+	SourceMode  string
+	SnapshotRef string
+	CommandArgs []string
+}
 
-	if snapshotRef != "" {
-		h.Write([]byte(snapshotRef))
+func GenerateCacheKey(ctx context.Context, in CacheKeyInputs) (string, error) {
+	h := sha256.New()
+	h.Write([]byte(in.ProjectID))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(in.Toolchain))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(in.Runner))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(in.SourceMode))
+	h.Write([]byte("\x00"))
+
+	for _, arg := range in.CommandArgs {
+		h.Write([]byte(arg))
+		h.Write([]byte("\x00"))
+	}
+
+	if in.SnapshotRef != "" {
+		h.Write([]byte(in.SnapshotRef))
 		return hex.EncodeToString(h.Sum(nil)), nil
 	}
 
 	cmd := exec.CommandContext(ctx, "git", "ls-tree", "-r", "HEAD")
-	cmd.Dir = dir
+	cmd.Dir = in.Dir
 
 	output, err := cmd.Output()
 	if err != nil {
-		return fallbackHash(dir, toolchain, runner, sourceMode), nil
+		return fallbackHash(in), nil
 	}
 
 	h.Write(output)
 
 	statusCmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
-	statusCmd.Dir = dir
+	statusCmd.Dir = in.Dir
 	if statusOutput, err := statusCmd.Output(); err == nil {
 		h.Write(statusOutput)
 	}
@@ -37,11 +57,21 @@ func GenerateCacheKey(ctx context.Context, dir, toolchain, runner, sourceMode, s
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func fallbackHash(dir, toolchain, runner, sourceMode string) string {
+func fallbackHash(in CacheKeyInputs) string {
 	h := sha256.New()
-	h.Write([]byte(toolchain))
-	h.Write([]byte(runner))
-	h.Write([]byte(sourceMode))
-	h.Write([]byte(dir))
+	h.Write([]byte(in.ProjectID))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(in.Toolchain))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(in.Runner))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(in.SourceMode))
+	h.Write([]byte("\x00"))
+	h.Write([]byte(in.Dir))
+	h.Write([]byte("\x00"))
+	for _, arg := range in.CommandArgs {
+		h.Write([]byte(arg))
+		h.Write([]byte("\x00"))
+	}
 	return hex.EncodeToString(h.Sum(nil))
 }

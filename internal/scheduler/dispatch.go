@@ -78,6 +78,7 @@ func (d *Dispatcher) Submit(ctx context.Context, req apitypes.BuildRequest, cach
 		ArtifactPaths: req.ArtifactPaths,
 		Image:         req.DockerImage,
 		Owner:         owner,
+		ProjectID:     req.ProjectID,
 		SubmittedAt:   time.Now().UTC(),
 	}
 
@@ -109,7 +110,14 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 	switch job.Runner {
 	case apitypes.RunnerDocker:
 		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
+		if d.executor == nil {
+			_ = d.store.FailJob(ctx, job.ID, "executor not configured")
+			return
+		}
 		result, err := d.executor.Execute(ctx, job)
+		if d.logBroker != nil {
+			d.logBroker.CloseJob(job.ID)
+		}
 		if err != nil || result.ExitCode != 0 {
 			errMsg := ""
 			if err != nil {
@@ -138,9 +146,16 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 		}
 		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
 
-	case apitypes.RunnerLocal:
+	case apitypes.RunnerHost, apitypes.RunnerLocal:
 		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
+		if d.executor == nil {
+			_ = d.store.FailJob(ctx, job.ID, "executor not configured")
+			return
+		}
 		result, err := d.executor.Execute(ctx, job)
+		if d.logBroker != nil {
+			d.logBroker.CloseJob(job.ID)
+		}
 		if err != nil || result.ExitCode != 0 {
 			errMsg := ""
 			if err != nil {

@@ -54,4 +54,14 @@ var builtinToolchains = []apitypes.ToolchainDef{
 		DockerImage:      "reactnativecommunity/react-native-android:latest",
 		DefaultArtifacts: []string{"app/build/outputs/apk/debug/*.apk"},
 	},
+	{
+		Name:             apitypes.ToolchainZephyr,
+		DisplayName:      "Zephyr",
+		DetectFiles:      []string{"west.yml", "prj.conf"},
+		Backend:          apitypes.BackendScheduler,
+		LocalCommand:     "west",
+		DefaultArgs:      []string{"build"},
+		DockerImage:      "ghcr.io/zephyrproject-rtos/ci:v0.26.8",
+		DefaultArtifacts: []string{"build/zephyr/zephyr.bin", "build/zephyr/zephyr.hex", "build/zephyr/zephyr.elf"},
+	},
 }

@@ -26,17 +26,18 @@ A remote build execution and caching system designed specifically for developers
 
 ## Overview
 
-packets is an event-driven, remote build platform for compiling applications in any programming language. At a high level, it provides a few major components:
+**Packets** is a remote development execution platform for developers and AI coding agents.
 
-* A multithreaded, scalable build task **scheduler** (`packetsd`).
-* An **artifact cache** backed by the S3/MinIO compatible object storage.
-* An instantaneous **CLI worker** (`packets`) that streams logs over NATS.
+The core principle:
+> **The developer's machine is the interface. The remote machine performs expensive development work.**
 
-These components provide the runtime necessary for building large-scale applications without relying on a single laptop's processing power.
-
-## Example
-
-A basic remote build execution using packets.
+Packets provides:
+* **Remote Development Mode (`packets dev .`)**: Automatic polyglot project detection (Android, Zephyr, Rust, Go, Node, CMake), remote environment checks, workspace sync, and AI instructions generation.
+* **Persistent Remote Workspaces (`packets sync`)**: Incremental file synchronization and full synchronization with remote deletion detection.
+* **Remote Command Execution (`packets exec`)**: Run arbitrary shell commands, compilers, or test suites directly on the remote VPS with real-time log streaming.
+* **Model Context Protocol (`packets mcp`)**: Standardized stdio MCP server for AI IDEs (Cursor, VS Code + Copilot, Claude Desktop, Antigravity) with human-in-the-loop approval and sandboxing.
+* **Environment Manager (`packets env`)**: Automatic toolchain and SDK detection, verification, and provisioning (`detect`, `check`, `prepare`).
+## Installation
 
 Install the pre-compiled executable via our setup script:
 
@@ -44,31 +45,57 @@ Install the pre-compiled executable via our setup script:
 curl -fsSL https://raw.githubusercontent.com/debaucheryparty/packets/main/scripts/install.sh | bash
 ```
 
-Alternatively, if you prefer building from source:
+Alternatively, build from source using Go 1.22+:
 
 ```bash
-go install github.com/debaucheryparty/packets/cmd/packets@latest
-```
-Then, inside any project directory (e.g. Go, Rust, C++):
-
-```console
-$ packets build .
-> Detecting toolchain...
-> Cache miss. Dispatching to remote server...
-> Compiling...
-> Done in 1.2s.
+git clone https://github.com/debaucheryparty/packets.git
+cd packets
+go build -o packets ./cmd/packets
 ```
 
-If you prefer to bypass the self-hosted daemon and run a "Serverless" build straight to GitHub Actions (great for macOS/iOS builds):
+## Quick Start
 
-```console
-$ export DIRECT_CI_MODE=true
-$ packets build .
-> Direct-CI mode enabled, bypassing scheduler...
-> Direct CI job dispatched successfully.
+### 1. Initialize Remote Development Session
+```bash
+packets dev .
+```
+Detects project components, checks remote toolchain readiness, configures AI agent rules (`AGENTS.md`, `.cursor/rules`), and sets up MCP.
+
+### 2. Remote Command Execution
+```bash
+packets exec "./gradlew assembleDebug"
+packets exec "cargo test"
+packets exec -- uname -a
 ```
 
-More setup examples and deployment architectures can be found in our [Setup Guide](guide.md). 
+### 3. Workspace Synchronization
+```bash
+# Incremental synchronization
+packets sync .
+
+# Full synchronization with remote deletion detection
+packets sync --full .
+```
+
+### 4. Environment Inspection & Provisioning
+```bash
+packets env detect .
+packets env check .
+packets env prepare .
+```
+
+### 5. AI Coding Agent MCP Server
+Configure your AI IDE (Cursor, VS Code Claude Dev / Copilot, Claude Desktop) with:
+```json
+{
+  "mcpServers": {
+    "packets": {
+      "command": "packets",
+      "args": ["mcp"]
+    }
+  }
+}
+``` 
 
 ## Getting Help
 

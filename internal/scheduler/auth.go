@@ -9,18 +9,26 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
-// TailscaleInterceptor ensures the caller is verified via Tailscale whois
-func TailscaleInterceptor() grpc.UnaryServerInterceptor {
+// AuthInterceptor checks bearer token if requiredToken is set; otherwise falls back to Tailscale identity.
+func AuthInterceptor(requiredToken string) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
 		req interface{},
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
+		if requiredToken != "" {
+			if err := verifyBearerToken(ctx, requiredToken); err != nil {
+				return nil, status.Errorf(codes.Unauthenticated, "authentication failed: %v", err)
+			}
+			return handler(ctx, req)
+		}
+
 		if err := verifyTailscaleIdentity(ctx); err != nil {
 			return nil, status.Errorf(codes.Unauthenticated, "tailscale auth failed: %v", err)
 		}
@@ -28,19 +36,55 @@ func TailscaleInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-// TailscaleStreamInterceptor ensures the caller is verified via Tailscale whois for streams
-func TailscaleStreamInterceptor() grpc.StreamServerInterceptor {
+// AuthStreamInterceptor checks bearer token if requiredToken is set; otherwise falls back to Tailscale identity.
+func AuthStreamInterceptor(requiredToken string) grpc.StreamServerInterceptor {
 	return func(
 		srv interface{},
 		ss grpc.ServerStream,
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
 	) error {
+		if requiredToken != "" {
+			if err := verifyBearerToken(ss.Context(), requiredToken); err != nil {
+				return status.Errorf(codes.Unauthenticated, "authentication failed: %v", err)
+			}
+			return handler(srv, ss)
+		}
+
 		if err := verifyTailscaleIdentity(ss.Context()); err != nil {
 			return status.Errorf(codes.Unauthenticated, "tailscale auth failed: %v", err)
 		}
 		return handler(srv, ss)
 	}
+}
+
+// TailscaleInterceptor ensures the caller is verified via Tailscale whois
+func TailscaleInterceptor() grpc.UnaryServerInterceptor {
+	return AuthInterceptor("")
+}
+
+// TailscaleStreamInterceptor ensures the caller is verified via Tailscale whois for streams
+func TailscaleStreamInterceptor() grpc.StreamServerInterceptor {
+	return AuthStreamInterceptor("")
+}
+
+func verifyBearerToken(ctx context.Context, requiredToken string) error {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return fmt.Errorf("missing incoming metadata")
+	}
+
+	authHeaders := md.Get("authorization")
+	if len(authHeaders) == 0 {
+		return fmt.Errorf("missing authorization header")
+	}
+
+	token := strings.TrimPrefix(authHeaders[0], "Bearer ")
+	token = strings.TrimSpace(token)
+	if token != requiredToken {
+		return fmt.Errorf("invalid bearer token")
+	}
+	return nil
 }
 
 func verifyTailscaleIdentity(ctx context.Context) error {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/debaucheryparty/packets/internal/android"
 	"github.com/debaucheryparty/packets/internal/config"
+	"github.com/debaucheryparty/packets/internal/project"
 	"github.com/debaucheryparty/packets/internal/workspace"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 	pb "github.com/debaucheryparty/packets/proto/v1"
@@ -106,6 +107,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 				SourceMode:    string(apitypes.SourceModeWorkspace),
 				CommandArgs:   []string{gradleTask},
 				ArtifactPaths: []string{artifactGlob},
+				ProjectId:     project.ResolveProjectID(dir),
 			})
 			if err != nil {
 				return fmt.Errorf("submit job: %w", err)
@@ -339,6 +341,7 @@ func newAndroidTestCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comma
 				Runner:      string(apitypes.RunnerDocker),
 				SourceMode:  string(apitypes.SourceModeWorkspace),
 				CommandArgs: []string{"connectedAndroidTest"},
+				ProjectId:   project.ResolveProjectID(dir),
 			})
 			if err != nil {
 				return fmt.Errorf("submit job: %w", err)
@@ -671,10 +674,29 @@ func newAndroidConnectCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 			port, _ := cmd.Flags().GetInt("port")
 
 			if host == "" {
-				host = os.Getenv("ORACLE_VM_TAILSCALE_HOSTNAME")
-				if host == "" {
-					return fmt.Errorf("missing remote host: specify --host=<tailscale-ip> or set ORACLE_VM_TAILSCALE_HOSTNAME")
+				if cfg.OracleVMTailscaleHost != "" {
+					h := cfg.OracleVMTailscaleHost
+					if idx := strings.Index(h, ":"); idx != -1 {
+						h = h[:idx]
+					}
+					host = h
 				}
+			}
+			if host == "" {
+				prof, _ := config.LoadProfile()
+				if prof != nil && prof.ServerAddr != "" {
+					h := prof.ServerAddr
+					if idx := strings.Index(h, ":"); idx != -1 {
+						h = h[:idx]
+					}
+					host = h
+				}
+			}
+			if host == "" {
+				host = os.Getenv("ORACLE_VM_TAILSCALE_HOSTNAME")
+			}
+			if host == "" {
+				host = "127.0.0.1"
 			}
 
 			target := fmt.Sprintf("%s:%d", host, port)
@@ -734,6 +756,7 @@ func runBuildInstallLaunch(
 		SourceMode:    string(apitypes.SourceModeWorkspace),
 		CommandArgs:   []string{gradleTask},
 		ArtifactPaths: []string{artifactGlob},
+		ProjectId:     project.ResolveProjectID(projectRoot),
 	})
 	if err != nil {
 		return fmt.Errorf("submit job: %w", err)
