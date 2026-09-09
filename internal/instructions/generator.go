@@ -40,13 +40,11 @@ func GenerateInstructions(projectDir string) error {
 		return err
 	}
 
-	// 1. Write AGENTS.md
 	agentsPath := filepath.Join(absDir, "AGENTS.md")
 	if err := os.WriteFile(agentsPath, []byte(AgentsTemplate), 0o644); err != nil {
 		return fmt.Errorf("write AGENTS.md: %w", err)
 	}
 
-	// 2. Write .cursor/rules/packets.mdc
 	cursorDir := filepath.Join(absDir, ".cursor", "rules")
 	_ = os.MkdirAll(cursorDir, 0o755)
 	cursorRule := "---\ndescription: Packets Remote Execution Rules\nglobs: *\n---\n" + AgentsTemplate
@@ -54,7 +52,6 @@ func GenerateInstructions(projectDir string) error {
 		return fmt.Errorf("write packets.mdc: %w", err)
 	}
 
-	// 3. Write .vscode/mcp.json snippet
 	vscodeDir := filepath.Join(absDir, ".vscode")
 	_ = os.MkdirAll(vscodeDir, 0o755)
 	mcpConfig := map[string]interface{}{

@@ -93,80 +93,65 @@ func topologyHasComponent(list []Component, c Component) bool {
 func (d *Detector) detectInDir(dir, relPath string) ([]Component, error) {
 	var comps []Component
 
-	// Android
 	androidComp := d.detectAndroid(dir, relPath)
 	if androidComp != nil {
 		comps = append(comps, *androidComp)
 	}
 
-	// Zephyr
 	if zephyrComp := d.detectZephyr(dir, relPath); zephyrComp != nil {
 		comps = append(comps, *zephyrComp)
 	}
 
-	// Rust
 	if rustComp := d.detectRust(dir, relPath); rustComp != nil {
 		comps = append(comps, *rustComp)
 	}
 
-	// Go
 	if goComp := d.detectGo(dir, relPath); goComp != nil {
 		comps = append(comps, *goComp)
 	}
 
-	// Node
 	if nodeComp := d.detectNode(dir, relPath); nodeComp != nil {
 		comps = append(comps, *nodeComp)
 	}
 
-	// Python
 	if pythonComp := d.detectPython(dir, relPath); pythonComp != nil {
 		comps = append(comps, *pythonComp)
 	}
 
-	// Java (standalone, non-Android)
 	if javaComp := d.detectJava(dir, relPath, androidComp != nil); javaComp != nil {
 		comps = append(comps, *javaComp)
 	}
 
-	// Swift
 	if swiftComp := d.detectSwift(dir, relPath); swiftComp != nil {
 		comps = append(comps, *swiftComp)
 	}
 
-	// Ruby
 	if rubyComp := d.detectRuby(dir, relPath); rubyComp != nil {
 		comps = append(comps, *rubyComp)
 	}
 
-	// PHP
 	if phpComp := d.detectPHP(dir, relPath); phpComp != nil {
 		comps = append(comps, *phpComp)
 	}
 
-	// Zig
 	if zigComp := d.detectZig(dir, relPath); zigComp != nil {
 		comps = append(comps, *zigComp)
 	}
 
-	// .NET
 	if dotnetComp := d.detectDotNet(dir, relPath); dotnetComp != nil {
 		comps = append(comps, *dotnetComp)
 	}
 
-	// Flutter / Dart
 	if flutterComp := d.detectFlutterOrDart(dir, relPath); flutterComp != nil {
 		comps = append(comps, *flutterComp)
 	}
 
-	// Elixir / Erlang
 	if elixirComp := d.detectElixir(dir, relPath); elixirComp != nil {
 		comps = append(comps, *elixirComp)
 	}
 
-	// CMake
 	if cmakeComp := d.detectCMake(dir, relPath); cmakeComp != nil {
-		// Only add CMake if Zephyr or Android did not already claim it
+
 		hasZephyrOrAndroid := false
 		for _, c := range comps {
 			if c.Type == ComponentZephyr || c.Type == ComponentAndroid {
@@ -214,7 +199,6 @@ func (d *Detector) detectAndroid(dir, rel string) *Component {
 	meta := make(map[string]string)
 	meta["gradle_wrapper"] = "false"
 
-	// Parse gradle-wrapper.properties
 	wrapperProps := filepath.Join(dir, "gradle", "wrapper", "gradle-wrapper.properties")
 	if fileExists(wrapperProps) {
 		meta["gradle_wrapper"] = "true"
@@ -223,7 +207,6 @@ func (d *Detector) detectAndroid(dir, rel string) *Component {
 		}
 	}
 
-	// Check compileSdk / targetSdk in app/build.gradle[.kts]
 	for _, bg := range []string{
 		filepath.Join(dir, "app", "build.gradle.kts"),
 		filepath.Join(dir, "app", "build.gradle"),
@@ -663,7 +646,7 @@ func extractCompileSdk(buildFile string) string {
 	if len(matches) > 1 {
 		return matches[1]
 	}
-	return "35" // fallback default modern Android platform
+	return "35"
 }
 
 func formatComponentName(compType, relPath string) string {

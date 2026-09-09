@@ -23,7 +23,6 @@ func (b *CacheKeyBuilder) Build(ctx context.Context, inputs apitypes.BuildInputs
 
 	h := sha256.New()
 
-	// v1 cache key format byte, changing this busts all existing caches
 	h.Write([]byte{0x01})
 
 	h.Write([]byte(inputs.Toolchain))

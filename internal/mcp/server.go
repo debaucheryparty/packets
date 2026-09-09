@@ -147,6 +147,12 @@ func (s *Server) Run(r io.Reader, w io.Writer) error {
 	return scanner.Err()
 }
 
+func (s *Server) SetWriter(w io.Writer) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	s.writer = w
+}
+
 func (s *Server) SendNotification(method string, params interface{}) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -478,7 +484,6 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			defer conn.Close()
 		}
 
-		// 1. Sync workspace before build
 		snapshotRef, err := workspace.UploadWorkspace(ctx, conn, dir, false)
 		if err != nil {
 			return errorResult("Workspace sync before build failed: " + err.Error())

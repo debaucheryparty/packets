@@ -21,7 +21,7 @@ const (
 )
 
 type EmulatorManager interface {
-	Start(ctx context.Context, avd string, opts EmulatorStartOpts) (string, error) // returns serial
+	Start(ctx context.Context, avd string, opts EmulatorStartOpts) (string, error)
 	Stop(ctx context.Context, serial string) error
 	Status(ctx context.Context, serial string) (EmulatorState, error)
 	WaitForBoot(ctx context.Context, serial string, timeout time.Duration) error

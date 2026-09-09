@@ -13,9 +13,9 @@ import (
 
 func NewPullCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	var (
-		jobIDFlag      string
-		outputFlag     string
-		artifactsOnly  bool
+		jobIDFlag     string
+		outputFlag    string
+		artifactsOnly bool
 	)
 
 	cmd := &cobra.Command{
@@ -56,7 +56,6 @@ generated code stubs, or build outputs) directly into your local project directo
 				return nil
 			}
 
-			// If job ID not provided, try to pull latest artifacts for the current project
 			projectID := project.ResolveProjectID(absDir)
 			fmt.Printf("Pulling latest build artifacts for project %s into %s...\n", projectID, destDir)
 
@@ -82,10 +81,8 @@ func pullLatestProjectArtifacts(ctx context.Context, cfg *config.Config, logger 
 	}
 	defer conn.Close()
 
-	// Try checking if there is an active job or saved artifact ref in local .packets
-	// If a specific job ID is known, pull that job's artifact
 	if err := PullAndExtractArtifact(ctx, cfg, logger, projectID, destDir); err != nil {
-		// If projectID itself wasn't a job ID, provide a clear instruction
+
 		return fmt.Errorf("no specific job specified; please pass --job <job-id> (e.g. packets pull --job <id>) or run after a build: %w", err)
 	}
 	return nil

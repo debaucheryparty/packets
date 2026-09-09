@@ -8,7 +8,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Profile holds persistent client configuration for connecting to Packets daemons.
 type Profile struct {
 	ServerAddr            string `yaml:"server_addr" json:"server_addr"`
 	AuthToken             string `yaml:"auth_token" json:"auth_token"`
@@ -20,7 +19,6 @@ type Profile struct {
 	TLSInsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify,omitempty" json:"tls_insecure_skip_verify,omitempty"`
 }
 
-// GetConfigDir returns the default ~/.packets directory.
 func GetConfigDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -29,7 +27,6 @@ func GetConfigDir() (string, error) {
 	return filepath.Join(home, ".packets"), nil
 }
 
-// GetProfilePath returns the standard ~/.packets/config.yaml path.
 func GetProfilePath() (string, error) {
 	dir, err := GetConfigDir()
 	if err != nil {
@@ -38,9 +35,8 @@ func GetProfilePath() (string, error) {
 	return filepath.Join(dir, "config.yaml"), nil
 }
 
-// LoadProfile reads ~/.packets/config.yaml, or falls back to .packets/config.yaml in the current directory.
 func LoadProfile() (*Profile, error) {
-	// First check local project directory
+
 	if data, err := os.ReadFile(filepath.Join(".packets", "config.yaml")); err == nil {
 		var p Profile
 		if err := yaml.Unmarshal(data, &p); err == nil {
@@ -69,7 +65,6 @@ func LoadProfile() (*Profile, error) {
 	return &p, nil
 }
 
-// SaveProfile writes the profile to ~/.packets/config.yaml.
 func SaveProfile(p *Profile) error {
 	dir, err := GetConfigDir()
 	if err != nil {

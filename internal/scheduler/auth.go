@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// AuthInterceptor checks bearer token if requiredToken is set; otherwise falls back to Tailscale identity.
 func AuthInterceptor(requiredToken string) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -36,7 +35,6 @@ func AuthInterceptor(requiredToken string) grpc.UnaryServerInterceptor {
 	}
 }
 
-// AuthStreamInterceptor checks bearer token if requiredToken is set; otherwise falls back to Tailscale identity.
 func AuthStreamInterceptor(requiredToken string) grpc.StreamServerInterceptor {
 	return func(
 		srv interface{},
@@ -58,12 +56,10 @@ func AuthStreamInterceptor(requiredToken string) grpc.StreamServerInterceptor {
 	}
 }
 
-// TailscaleInterceptor ensures the caller is verified via Tailscale whois
 func TailscaleInterceptor() grpc.UnaryServerInterceptor {
 	return AuthInterceptor("")
 }
 
-// TailscaleStreamInterceptor ensures the caller is verified via Tailscale whois for streams
 func TailscaleStreamInterceptor() grpc.StreamServerInterceptor {
 	return AuthStreamInterceptor("")
 }

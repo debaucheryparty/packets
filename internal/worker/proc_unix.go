@@ -18,6 +18,6 @@ func killProcessTree(cmd *exec.Cmd) error {
 		return nil
 	}
 	pgid := cmd.Process.Pid
-	// Negative PID signals the entire process group in Unix
+
 	return syscall.Kill(-pgid, syscall.SIGKILL)
 }

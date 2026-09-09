@@ -31,7 +31,6 @@ func (z *ZephyrResolver) checkZephyrSDK() ToolchainRequirement {
 		PrepareCmd: "wget https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz && tar xf zephyr-sdk-*.tar.xz",
 	}
 
-	// Check environment variable ZEPHYR_SDK_INSTALL_DIR
 	out, err := exec.Command("west", "config", "zephyr.sdk-path").CombinedOutput()
 	if err == nil && len(strings.TrimSpace(string(out))) > 0 {
 		req.Status = StatusOk

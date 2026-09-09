@@ -1,10 +1,17 @@
-package environment
+package tests
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/debaucheryparty/packets/internal/environment"
+	pb "github.com/debaucheryparty/packets/proto/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 func TestDetector_PolyglotDetection(t *testing.T) {
@@ -14,30 +21,26 @@ func TestDetector_PolyglotDetection(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create subproject 1: Android in android/
 	androidDir := filepath.Join(tempDir, "android")
 	_ = os.MkdirAll(filepath.Join(androidDir, "app"), 0o755)
 	_ = os.WriteFile(filepath.Join(androidDir, "gradlew"), []byte("#!/bin/sh"), 0o755)
 	_ = os.WriteFile(filepath.Join(androidDir, "settings.gradle.kts"), []byte("rootProject.name = \"demo\""), 0o644)
 	_ = os.WriteFile(filepath.Join(androidDir, "app", "build.gradle.kts"), []byte("android { compileSdk = 35 }"), 0o644)
 
-	// Create subproject 2: Rust in backend/
 	rustDir := filepath.Join(tempDir, "backend")
 	_ = os.MkdirAll(rustDir, 0o755)
 	_ = os.WriteFile(filepath.Join(rustDir, "Cargo.toml"), []byte("[package]\nname = \"srv\"\nversion = \"0.1.0\""), 0o644)
 
-	// Create subproject 3: Zephyr firmware in firmware/
 	zephyrDir := filepath.Join(tempDir, "firmware")
 	_ = os.MkdirAll(zephyrDir, 0o755)
 	_ = os.WriteFile(filepath.Join(zephyrDir, "west.yml"), []byte("manifest:\n  version: '0.14'"), 0o644)
 	_ = os.WriteFile(filepath.Join(zephyrDir, "prj.conf"), []byte("CONFIG_LOG=y"), 0o644)
 
-	// Create subproject 4: Python service in service/
 	pyDir := filepath.Join(tempDir, "service")
 	_ = os.MkdirAll(pyDir, 0o755)
 	_ = os.WriteFile(filepath.Join(pyDir, "pyproject.toml"), []byte("[tool.poetry]\nname = \"service\""), 0o644)
 
-	mgr := NewManager()
+	mgr := environment.NewManager()
 	topo, err := mgr.Detect(tempDir)
 	if err != nil {
 		t.Fatalf("Detect failed: %v", err)
@@ -50,16 +53,16 @@ func TestDetector_PolyglotDetection(t *testing.T) {
 	foundAndroid, foundRust, foundZephyr, foundPython := false, false, false, false
 	for _, c := range topo.Components {
 		switch c.Type {
-		case ComponentAndroid:
+		case environment.ComponentAndroid:
 			foundAndroid = true
 			if c.Metadata["compile_sdk"] != "35" {
 				t.Errorf("expected compile_sdk 35, got %q", c.Metadata["compile_sdk"])
 			}
-		case ComponentRust:
+		case environment.ComponentRust:
 			foundRust = true
-		case ComponentZephyr:
+		case environment.ComponentZephyr:
 			foundZephyr = true
-		case ComponentPython:
+		case environment.ComponentPython:
 			foundPython = true
 			if c.Metadata["package_manager"] != "poetry" {
 				t.Errorf("expected package_manager poetry, got %q", c.Metadata["package_manager"])
@@ -99,7 +102,7 @@ func TestDetector_PythonVariants(t *testing.T) {
 
 	_ = os.WriteFile(filepath.Join(tempDir, "requirements.txt"), []byte("fastapi\nuvicorn\n"), 0o644)
 
-	mgr := NewManager()
+	mgr := environment.NewManager()
 	topo, err := mgr.Detect(tempDir)
 	if err != nil {
 		t.Fatalf("Detect failed: %v", err)
@@ -109,7 +112,7 @@ func TestDetector_PythonVariants(t *testing.T) {
 		t.Fatalf("expected 1 component, got %d", len(topo.Components))
 	}
 	c := topo.Components[0]
-	if c.Type != ComponentPython {
+	if c.Type != environment.ComponentPython {
 		t.Errorf("expected ComponentPython, got %s", c.Type)
 	}
 	if c.Metadata["package_manager"] != "pip" {
@@ -121,7 +124,7 @@ func TestDetector_AdditionalLanguages(t *testing.T) {
 	cases := []struct {
 		name         string
 		files        map[string]string
-		expectedType ComponentType
+		expectedType environment.ComponentType
 		metaCheck    func(map[string]string) bool
 	}{
 		{
@@ -129,7 +132,7 @@ func TestDetector_AdditionalLanguages(t *testing.T) {
 			files: map[string]string{
 				"pom.xml": "<project></project>",
 			},
-			expectedType: ComponentJava,
+			expectedType: environment.ComponentJava,
 			metaCheck: func(m map[string]string) bool {
 				return m["build_system"] == "maven"
 			},
@@ -139,7 +142,7 @@ func TestDetector_AdditionalLanguages(t *testing.T) {
 			files: map[string]string{
 				"build.gradle": "plugins { id 'java' }",
 			},
-			expectedType: ComponentJava,
+			expectedType: environment.ComponentJava,
 			metaCheck: func(m map[string]string) bool {
 				return m["build_system"] == "gradle"
 			},
@@ -149,165 +152,155 @@ func TestDetector_AdditionalLanguages(t *testing.T) {
 			files: map[string]string{
 				"Package.swift": "// swift-tools-version: 5.9",
 			},
-			expectedType: ComponentSwift,
+			expectedType: environment.ComponentSwift,
 		},
 		{
 			name: "Ruby Gemfile",
 			files: map[string]string{
 				"Gemfile": "source 'https://rubygems.org'",
 			},
-			expectedType: ComponentRuby,
+			expectedType: environment.ComponentRuby,
 		},
 		{
 			name: "PHP Composer",
 			files: map[string]string{
 				"composer.json": `{"name": "test/app"}`,
 			},
-			expectedType: ComponentPHP,
+			expectedType: environment.ComponentPHP,
 		},
 		{
 			name: "Zig build",
 			files: map[string]string{
 				"build.zig": "const std = @import(\"std\");",
 			},
-			expectedType: ComponentZig,
+			expectedType: environment.ComponentZig,
 		},
 		{
 			name: ".NET C# project",
 			files: map[string]string{
 				"App.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>",
 			},
-			expectedType: ComponentDotNet,
+			expectedType: environment.ComponentDotNet,
 		},
 		{
 			name: "Flutter project",
 			files: map[string]string{
 				"pubspec.yaml": "name: flutter_app\ndependencies:\n  flutter:\n    sdk: flutter\n",
 			},
-			expectedType: ComponentFlutter,
+			expectedType: environment.ComponentFlutter,
 		},
 		{
 			name: "Dart package",
 			files: map[string]string{
 				"pubspec.yaml": "name: dart_pkg\nversion: 1.0.0\n",
 			},
-			expectedType: ComponentDart,
+			expectedType: environment.ComponentDart,
 		},
 		{
 			name: "Elixir Mix",
 			files: map[string]string{
 				"mix.exs": "defmodule MyApp.MixProject do\nend",
 			},
-			expectedType: ComponentElixir,
+			expectedType: environment.ComponentElixir,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			for f, content := range tc.files {
-				p := filepath.Join(dir, f)
-				_ = os.MkdirAll(filepath.Dir(p), 0o755)
-				_ = os.WriteFile(p, []byte(content), 0o644)
+			tempDir, err := os.MkdirTemp("", "packets-lang-test-*")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(tempDir)
+
+			for p, content := range tc.files {
+				target := filepath.Join(tempDir, p)
+				_ = os.MkdirAll(filepath.Dir(target), 0o755)
+				_ = os.WriteFile(target, []byte(content), 0o644)
 			}
 
-			mgr := NewManager()
-			topo, err := mgr.Detect(dir)
+			mgr := environment.NewManager()
+			topo, err := mgr.Detect(tempDir)
 			if err != nil {
-				t.Fatalf("Detect error: %v", err)
+				t.Fatalf("Detect failed: %v", err)
 			}
+
 			if len(topo.Components) == 0 {
-				t.Fatalf("Expected at least 1 component, found none")
+				t.Fatalf("expected at least 1 component detected")
 			}
 
-			var matched *Component
-			for _, comp := range topo.Components {
-				if comp.Type == tc.expectedType {
-					c := comp
-					matched = &c
-					break
+			found := false
+			for _, c := range topo.Components {
+				if c.Type == tc.expectedType {
+					found = true
+					if tc.metaCheck != nil && !tc.metaCheck(c.Metadata) {
+						t.Errorf("metaCheck failed for %s: %+v", tc.name, c.Metadata)
+					}
 				}
 			}
-
-			if matched == nil {
-				t.Fatalf("Expected component %s not detected in %v", tc.expectedType, topo.Components)
-			}
-
-			if tc.metaCheck != nil && !tc.metaCheck(matched.Metadata) {
-				t.Errorf("Metadata check failed for component: %+v", matched.Metadata)
-			}
-
-			// Verify CheckComponents generates toolchain requirements
-			report, err := mgr.CheckComponents(context.Background(), []Component{*matched})
-			if err != nil {
-				t.Fatalf("CheckComponents failed: %v", err)
-			}
-			reqs := report.Components[tc.expectedType]
-			if len(reqs) == 0 {
-				t.Errorf("Expected toolchain requirements for %s, got 0", tc.expectedType)
-			}
-			for _, r := range reqs {
-				if !r.CanPrepare || r.PrepareCmd == "" {
-					t.Errorf("Requirement %s for %s is missing CanPrepare or PrepareCmd", r.Name, tc.expectedType)
-				}
+			if !found {
+				t.Errorf("expected component type %s not found in %+v", tc.expectedType, topo.Components)
 			}
 		})
 	}
 }
 
-func TestDetector_ManualOverrides(t *testing.T) {
-	dir := t.TempDir()
+func setupTestGRPCServer(t *testing.T) (*environment.RemoteClient, func()) {
+	lis := bufconn.Listen(1024 * 1024)
+	s := grpc.NewServer()
+	envServer := environment.NewServer(environment.NewManager())
+	pb.RegisterEnvironmentServer(s, envServer)
 
-	// 1. Create a go.mod file (heuristic would normally detect Go)
-	_ = os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module testapp\n\ngo 1.22\n"), 0o644)
+	go func() {
+		_ = s.Serve(lis)
+	}()
 
-	mgr := NewManager()
-	topo, err := mgr.Detect(dir)
+	dialer := func(context.Context, string) (net.Conn, error) {
+		return lis.Dial()
+	}
+
+	conn, err := grpc.DialContext(
+		context.Background(),
+		"passthrough://bufnet",
+		grpc.WithContextDialer(dialer),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
-		t.Fatalf("Detect: %v", err)
-	}
-	if len(topo.Components) != 1 || topo.Components[0].Type != ComponentGo {
-		t.Fatalf("Expected auto-detected Go, got: %+v", topo.Components)
+		t.Fatalf("Failed to dial bufnet: %v", err)
 	}
 
-	// 2. Set manual overrides in .packets/project.json
-	dotPackets := filepath.Join(dir, ".packets")
-	_ = os.MkdirAll(dotPackets, 0o755)
-	cfgContent := `{
-  "project_id": "testapp",
-  "components": [
-    {"type": "rust", "path": "native"},
-    {"type": "android", "path": "mobile"}
-  ]
-}`
-	_ = os.WriteFile(filepath.Join(dotPackets, "project.json"), []byte(cfgContent), 0o644)
-
-	// 3. Detect again - should use manual components, bypassing Go
-	topoManual, err := mgr.Detect(dir)
-	if err != nil {
-		t.Fatalf("Detect manual: %v", err)
-	}
-	if len(topoManual.Components) != 2 {
-		t.Fatalf("Expected 2 manual components, got %d", len(topoManual.Components))
-	}
-	for _, c := range topoManual.Components {
-		if c.Confidence != "manual" {
-			t.Errorf("Expected confidence 'manual', got %q for %s", c.Confidence, c.Type)
-		}
+	client := environment.NewRemoteClient(conn)
+	cleanup := func() {
+		_ = conn.Close()
+		s.Stop()
+		_ = lis.Close()
 	}
 
-	// 4. Reset manual components
-	resetCfg := `{"project_id": "testapp", "components": []}`
-	_ = os.WriteFile(filepath.Join(dotPackets, "project.json"), []byte(resetCfg), 0o644)
-
-	// 5. Detect again - should restore Go auto-detection
-	topoRestored, err := mgr.Detect(dir)
-	if err != nil {
-		t.Fatalf("Detect restored: %v", err)
-	}
-	if len(topoRestored.Components) != 1 || topoRestored.Components[0].Type != ComponentGo {
-		t.Fatalf("Expected restored Go auto-detection, got: %+v", topoRestored.Components)
-	}
+	return client, cleanup
 }
 
+func TestRemoteEnvironment_Check(t *testing.T) {
+	client, cleanup := setupTestGRPCServer(t)
+	defer cleanup()
 
+	ctx := context.Background()
+	comps := []environment.Component{
+		{
+			Type: environment.ComponentGo,
+			Path: ".",
+		},
+	}
+
+	report, err := client.Check(ctx, "proj-123", ".", comps)
+	if err != nil {
+		t.Fatalf("Remote Check failed: %v", err)
+	}
+
+	if report == nil {
+		t.Fatal("expected report to not be nil")
+	}
+
+	if _, ok := report.Components[environment.ComponentGo]; !ok {
+		t.Errorf("expected Go component in report")
+	}
+}

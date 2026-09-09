@@ -13,13 +13,13 @@ import (
 )
 
 var (
-	ErrApprovalRequired     = errors.New("human approval required")
+	ErrApprovalRequired      = errors.New("human approval required")
 	ErrInvalidApprovalTicket = errors.New("invalid approval ticket")
-	ErrTicketAlreadyUsed    = errors.New("approval ticket already used")
-	ErrTicketExpired        = errors.New("approval ticket expired")
-	ErrApprovalMismatch     = errors.New("approval ticket does not match request state (snapshot, command, or arguments changed)")
-	ErrPendingNotFound      = errors.New("pending approval not found")
-	ErrPendingExpired       = errors.New("pending approval expired")
+	ErrTicketAlreadyUsed     = errors.New("approval ticket already used")
+	ErrTicketExpired         = errors.New("approval ticket expired")
+	ErrApprovalMismatch      = errors.New("approval ticket does not match request state (snapshot, command, or arguments changed)")
+	ErrPendingNotFound       = errors.New("pending approval not found")
+	ErrPendingExpired        = errors.New("pending approval expired")
 )
 
 type CommandCategory string
@@ -48,7 +48,7 @@ type ExecutionContext struct {
 	SnapshotHash string   `json:"snapshot_hash"`
 	Command      string   `json:"command"`
 	Args         []string `json:"args"`
-	Action       string   `json:"action"` // "BUILD", "TEST", "EXEC"
+	Action       string   `json:"action"`
 }
 
 func (ec ExecutionContext) Hash() string {
@@ -112,7 +112,6 @@ func (p *PolicyEngine) ClassifyCommand(cmd string) CommandCategory {
 	trimmed := strings.TrimSpace(cmd)
 	lower := strings.ToLower(trimmed)
 
-	// Check dangerous commands
 	dangerousPatterns := []string{"rm -rf /", "mkfs", "dd if=", ":(){ :|:& };:", "chmod -R 777 /", "> /dev/sd"}
 	for _, dp := range dangerousPatterns {
 		if strings.Contains(lower, dp) {
@@ -120,7 +119,6 @@ func (p *PolicyEngine) ClassifyCommand(cmd string) CommandCategory {
 		}
 	}
 
-	// Read only
 	if strings.HasPrefix(lower, "ls ") || lower == "ls" ||
 		strings.HasPrefix(lower, "cat ") ||
 		strings.HasPrefix(lower, "grep ") ||
@@ -133,7 +131,6 @@ func (p *PolicyEngine) ClassifyCommand(cmd string) CommandCategory {
 		return CategoryReadOnly
 	}
 
-	// Build
 	if strings.Contains(lower, "assemble") ||
 		strings.Contains(lower, "west build") ||
 		strings.Contains(lower, "cargo build") ||
@@ -143,13 +140,11 @@ func (p *PolicyEngine) ClassifyCommand(cmd string) CommandCategory {
 		return CategoryBuild
 	}
 
-	// Test
 	if strings.Contains(lower, "test") ||
 		strings.Contains(lower, "check") {
 		return CategoryTest
 	}
 
-	// Dependency
 	if strings.Contains(lower, "install") ||
 		strings.Contains(lower, "update") ||
 		strings.Contains(lower, "fetch") ||
@@ -164,12 +159,10 @@ func (p *PolicyEngine) ValidatePath(targetPath, workspaceRoot string) error {
 	cleanedTarget := filepath.Clean(targetPath)
 	cleanedRoot := filepath.Clean(workspaceRoot)
 
-	// Check if escaping root
 	if !strings.HasPrefix(cleanedTarget, cleanedRoot) && cleanedTarget != cleanedRoot {
 		return fmt.Errorf("path %s escapes workspace root %s", targetPath, workspaceRoot)
 	}
 
-	// Reject system paths
 	forbiddenPrefixes := []string{"/etc", "/root", "/boot", "/dev", "/sys", "/proc"}
 	for _, fp := range forbiddenPrefixes {
 		if strings.HasPrefix(cleanedTarget, fp) {
@@ -185,7 +178,6 @@ func (p *PolicyEngine) RequiresApproval(req ApprovalRequest) bool {
 		return false
 	}
 
-	// Read only commands can bypass interactive approval
 	if req.Category == CategoryReadOnly {
 		return false
 	}
@@ -306,7 +298,14 @@ func (p *PolicyEngine) ValidateAndConsumeTicket(ticketID string, ec ExecutionCon
 		return ErrApprovalMismatch
 	}
 
-	// Consume ticket (single-use)
 	ticket.Used = true
 	return nil
+}
+
+func (p *PolicyEngine) ExpireTicketForTest(ticketID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if ticket, ok := p.tickets[ticketID]; ok {
+		ticket.ExpiresAt = time.Now().UTC().Add(-1 * time.Hour)
+	}
 }

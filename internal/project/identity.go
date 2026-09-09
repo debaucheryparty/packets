@@ -24,7 +24,6 @@ type Config struct {
 	Components  []ComponentConfig `json:"components,omitempty"`
 }
 
-// LoadConfig reads .packets/project.json from the given project root.
 func LoadConfig(dir string) (*Config, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -42,7 +41,6 @@ func LoadConfig(dir string) (*Config, error) {
 	return &cfg, nil
 }
 
-// SaveConfig persists the given Config to .packets/project.json.
 func SaveConfig(dir string, cfg *Config) error {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -60,17 +58,12 @@ func SaveConfig(dir string, cfg *Config) error {
 	return os.WriteFile(cfgFile, append(data, '\n'), 0o644)
 }
 
-// ResolveProjectID deterministically identifies the project using:
-// 1. Explicit .packets/project.json
-// 2. Git remote origin URL
-// 3. Normalized repository root absolute path hash
 func ResolveProjectID(dir string) string {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		absDir = dir
 	}
 
-	// 1. Check .packets/project.json
 	cfgFile := filepath.Join(absDir, ".packets", "project.json")
 	if data, err := os.ReadFile(cfgFile); err == nil {
 		var cfg Config
@@ -79,7 +72,6 @@ func ResolveProjectID(dir string) string {
 		}
 	}
 
-	// 2. Check git remote origin
 	cmd := exec.Command("git", "config", "--get", "remote.origin.url")
 	cmd.Dir = absDir
 	if out, err := cmd.Output(); err == nil {
@@ -90,7 +82,6 @@ func ResolveProjectID(dir string) string {
 		}
 	}
 
-	// 3. Fallback: Hash the clean absolute project root
 	h := sha256.Sum256([]byte(filepath.Clean(absDir)))
 	base := filepath.Base(absDir)
 	return sanitizeID(base) + "-" + hex.EncodeToString(h[:])[:8]

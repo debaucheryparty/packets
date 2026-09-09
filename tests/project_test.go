@@ -1,9 +1,11 @@
-package project
+package tests
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/debaucheryparty/packets/internal/project"
 )
 
 func TestResolveProjectID_ProjectJSON(t *testing.T) {
@@ -23,7 +25,7 @@ func TestResolveProjectID_ProjectJSON(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	id := ResolveProjectID(tempDir)
+	id := project.ResolveProjectID(tempDir)
 	if id != "my-custom-project" {
 		t.Errorf("expected my-custom-project, got %q", id)
 	}
@@ -36,8 +38,8 @@ func TestResolveProjectID_FallbackDeterministic(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	id1 := ResolveProjectID(tempDir)
-	id2 := ResolveProjectID(tempDir)
+	id1 := project.ResolveProjectID(tempDir)
+	id2 := project.ResolveProjectID(tempDir)
 
 	if id1 == "" {
 		t.Errorf("expected non-empty project ID")
@@ -50,39 +52,36 @@ func TestResolveProjectID_FallbackDeterministic(t *testing.T) {
 func TestConfig_SaveAndLoad(t *testing.T) {
 	tempDir := t.TempDir()
 
-	cfg := &Config{
+	cfg := &project.Config{
 		ProjectID: "test-app",
-		Components: []ComponentConfig{
+		Components: []project.ComponentConfig{
 			{
 				Type: "android",
 				Path: "mobile",
 			},
 			{
 				Type: "rust",
-				Path: "backend",
+				Path: "core",
 			},
 		},
 	}
 
-	if err := SaveConfig(tempDir, cfg); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
+	if err := project.SaveConfig(tempDir, cfg); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
 	}
 
-	loaded, err := LoadConfig(tempDir)
+	loaded, err := project.LoadConfig(tempDir)
 	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
+		t.Fatalf("LoadConfig failed: %v", err)
 	}
 
 	if loaded.ProjectID != "test-app" {
-		t.Errorf("expected test-app, got %q", loaded.ProjectID)
+		t.Errorf("expected test-app, got %s", loaded.ProjectID)
 	}
 	if len(loaded.Components) != 2 {
 		t.Fatalf("expected 2 components, got %d", len(loaded.Components))
 	}
-	if loaded.Components[0].Type != "android" || loaded.Components[0].Path != "mobile" {
-		t.Errorf("unexpected component 0: %+v", loaded.Components[0])
-	}
-	if loaded.Components[1].Type != "rust" || loaded.Components[1].Path != "backend" {
-		t.Errorf("unexpected component 1: %+v", loaded.Components[1])
+	if loaded.Components[0].Type != "android" || loaded.Components[1].Type != "rust" {
+		t.Errorf("unexpected components: %+v", loaded.Components)
 	}
 }

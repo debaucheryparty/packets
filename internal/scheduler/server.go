@@ -68,7 +68,6 @@ func (s *Server) SubmitJob(ctx context.Context, req *pb.SubmitJobRequest) (*pb.S
 		}
 	}
 
-	// Enforce policy & human approval check at the Scheduler API boundary (Priority 5)
 	if s.policyEngine != nil {
 		action := "BUILD"
 		if req.Toolchain == string(apitypes.ToolchainExec) {
@@ -160,12 +159,10 @@ func (s *Server) StreamJobLogs(req *pb.StreamJobLogsRequest, stream pb.Scheduler
 		}
 	}
 
-	// If job already closed, return immediately after draining existing lines
 	if s.logBroker.IsClosed(jobID) {
 		return nil
 	}
 
-	// Also check DB state in case log broker was not used for this job
 	if job, err := s.store.GetJob(ctx, jobID); err == nil && (job.State == apitypes.JobStateSucceeded || job.State == apitypes.JobStateFailed) {
 		return nil
 	}
@@ -176,7 +173,7 @@ func (s *Server) StreamJobLogs(req *pb.StreamJobLogsRequest, stream pb.Scheduler
 			return ctx.Err()
 		case line, ok := <-ch:
 			if !ok {
-				// Channel was closed by CloseJob - job is done
+
 				return nil
 			}
 			if err := stream.Send(&pb.JobLogLine{Content: line}); err != nil {

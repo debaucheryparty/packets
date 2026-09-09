@@ -28,7 +28,7 @@ func NewRegistry() *Registry {
 
 func (r *Registry) Register(def apitypes.ToolchainDef) {
 	if _, exists := r.lookupMap[def.Name]; exists {
-		// overwrite existing toolchain definition
+
 		idx := r.lookupMap[def.Name]
 		r.toolchains[idx] = def
 		return
@@ -124,7 +124,7 @@ func (r *Registry) Detect(dir string) (apitypes.ToolchainDef, error) {
 					dir, matches[0].Name, matches[0].Backend, matches[i].Name, matches[i].Backend)
 			}
 		}
-		// same backend, just take the first one since it's highest priority
+
 		return matches[0], nil
 	}
 

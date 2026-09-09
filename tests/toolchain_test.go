@@ -1,4 +1,4 @@
-package toolchain_test
+package tests
 
 import (
 	"os"
@@ -77,10 +77,10 @@ func TestRegistryDetect(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			for _, f := range tt.files {
-				createFile(t, filepath.Join(dir, f))
+				createTestFile(t, filepath.Join(dir, f))
 			}
 			for _, d := range tt.dirs {
-				createDir(t, filepath.Join(dir, d))
+				createTestDir(t, filepath.Join(dir, d))
 			}
 
 			def, err := r.Detect(dir)
@@ -105,8 +105,8 @@ func TestRegistryDetectFlutterVsDart(t *testing.T) {
 
 	t.Run("flutter with ios dir", func(t *testing.T) {
 		dir := t.TempDir()
-		createFile(t, filepath.Join(dir, "pubspec.yaml"))
-		createDir(t, filepath.Join(dir, "ios"))
+		createTestFile(t, filepath.Join(dir, "pubspec.yaml"))
+		createTestDir(t, filepath.Join(dir, "ios"))
 
 		def, err := r.Detect(dir)
 		if err != nil {
@@ -119,7 +119,7 @@ func TestRegistryDetectFlutterVsDart(t *testing.T) {
 
 	t.Run("dart without ios/android", func(t *testing.T) {
 		dir := t.TempDir()
-		createFile(t, filepath.Join(dir, "pubspec.yaml"))
+		createTestFile(t, filepath.Join(dir, "pubspec.yaml"))
 
 		def, err := r.Detect(dir)
 		if err != nil {
@@ -152,7 +152,7 @@ func TestRegistryCustomToolchain(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	createFile(t, filepath.Join(dir, "cobol.config"))
+	createTestFile(t, filepath.Join(dir, "cobol.config"))
 
 	detected, err := r.Detect(dir)
 	if err != nil {
@@ -171,7 +171,7 @@ func TestRegistryAll(t *testing.T) {
 	}
 }
 
-func createFile(t *testing.T, path string) {
+func createTestFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -181,7 +181,7 @@ func createFile(t *testing.T, path string) {
 	}
 }
 
-func createDir(t *testing.T, path string) {
+func createTestDir(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatal(err)

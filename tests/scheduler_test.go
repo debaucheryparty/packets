@@ -1,4 +1,4 @@
-package scheduler
+package tests
 
 import (
 	"context"
@@ -8,13 +8,33 @@ import (
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/policy"
+	"github.com/debaucheryparty/packets/internal/scheduler"
 	"github.com/debaucheryparty/packets/internal/storage"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 	pb "github.com/debaucheryparty/packets/proto/v1"
 )
 
+func TestStateMachine(t *testing.T) {
+	sm := scheduler.NewStateMachine()
+
+	err := sm.ValidateTransition(apitypes.JobStatePending, apitypes.JobStateDispatched)
+	if err != nil {
+		t.Errorf("expected transition to succeed, got %v", err)
+	}
+
+	err = sm.ValidateTransition(apitypes.JobStatePending, apitypes.JobStateSucceeded)
+	if err == nil {
+		t.Error("expected transition to fail, got nil")
+	}
+
+	err = sm.ValidateTransition(apitypes.JobStateDispatched, apitypes.JobStateFallbackLocal)
+	if err != nil {
+		t.Errorf("expected transition to succeed, got %v", err)
+	}
+}
+
 func TestLogBrokerPubSub(t *testing.T) {
-	broker := NewLogBroker()
+	broker := scheduler.NewLogBroker()
 	jobID := apitypes.JobID("test-job-123")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -60,7 +80,7 @@ func TestLogBrokerPubSub(t *testing.T) {
 }
 
 func TestQuotaLimiter(t *testing.T) {
-	limiter := NewQuotaLimiter(2, 60)
+	limiter := scheduler.NewQuotaLimiter(2, 60)
 	owner := "alice"
 
 	if err := limiter.Acquire(owner); err != nil {
@@ -90,8 +110,8 @@ func TestSubmitJob_ProjectIDPropagation(t *testing.T) {
 	}
 	defer store.Close()
 
-	dispatcher := NewDispatcher(slog.Default(), store, nil, nil, nil, NewLogBroker())
-	srv := NewServer(dispatcher, store, NewLogBroker(), nil, nil)
+	dispatcher := scheduler.NewDispatcher(slog.Default(), store, nil, nil, nil, scheduler.NewLogBroker())
+	srv := scheduler.NewServer(dispatcher, store, scheduler.NewLogBroker(), nil, nil)
 
 	resp, err := srv.SubmitJob(ctx, &pb.SubmitJobRequest{
 		CacheKey:    "test-cache-key-1",
@@ -121,12 +141,11 @@ func TestSubmitJob_EnforcesPolicyApproval(t *testing.T) {
 	}
 	defer store.Close()
 
-	dispatcher := NewDispatcher(slog.Default(), store, nil, nil, nil, NewLogBroker())
-	srv := NewServer(dispatcher, store, NewLogBroker(), nil, nil)
+	dispatcher := scheduler.NewDispatcher(slog.Default(), store, nil, nil, nil, scheduler.NewLogBroker())
+	srv := scheduler.NewServer(dispatcher, store, scheduler.NewLogBroker(), nil, nil)
 	pe := policy.NewPolicyEngine(policy.ApprovalAlways)
 	srv.SetPolicyEngine(pe)
 
-	// 1. Direct call without approval ticket -> rejected at Scheduler API
 	_, err = srv.SubmitJob(ctx, &pb.SubmitJobRequest{
 		CacheKey:    "test-cache-key-policy",
 		Toolchain:   "go",
@@ -137,7 +156,6 @@ func TestSubmitJob_EnforcesPolicyApproval(t *testing.T) {
 		t.Fatal("expected PermissionDenied error when no approval ticket is provided")
 	}
 
-	// 2. Human approval workflow produces ticket
 	ec := policy.ExecutionContext{
 		User:        "default",
 		ProjectID:   "proj-alpha-123",
@@ -155,7 +173,6 @@ func TestSubmitJob_EnforcesPolicyApproval(t *testing.T) {
 		t.Fatalf("ApprovePending: %v", err)
 	}
 
-	// 3. Direct call with valid ticket -> succeeds
 	resp, err := srv.SubmitJob(ctx, &pb.SubmitJobRequest{
 		CacheKey:       "test-cache-key-policy-2",
 		Toolchain:      "go",
@@ -170,7 +187,6 @@ func TestSubmitJob_EnforcesPolicyApproval(t *testing.T) {
 		t.Fatal("expected non-empty JobId")
 	}
 
-	// 4. Reuse ticket -> rejected (single-use)
 	_, err = srv.SubmitJob(ctx, &pb.SubmitJobRequest{
 		CacheKey:       "test-cache-key-policy-3",
 		Toolchain:      "go",
@@ -182,5 +198,3 @@ func TestSubmitJob_EnforcesPolicyApproval(t *testing.T) {
 		t.Fatal("expected PermissionDenied on reused ticket")
 	}
 }
-
-

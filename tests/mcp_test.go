@@ -1,4 +1,4 @@
-package mcp
+package tests
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/environment"
+	"github.com/debaucheryparty/packets/internal/mcp"
 	"github.com/debaucheryparty/packets/internal/policy"
 	"github.com/debaucheryparty/packets/internal/scheduler"
 	"github.com/debaucheryparty/packets/internal/storage"
@@ -34,7 +35,7 @@ func (s *testWorkspaceServer) Diff(ctx context.Context, req *pb.WorkspaceManifes
 	}, nil
 }
 
-func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*Server, *grpc.ClientConn, func()) {
+func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*mcp.Server, *grpc.ClientConn, func()) {
 	t.Helper()
 	lis := bufconn.Listen(1024 * 1024)
 	grpcServer := grpc.NewServer()
@@ -78,7 +79,7 @@ func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*Server, *grpc.C
 	}
 
 	cfg := &config.Config{SchedulerGRPCPort: "50051"}
-	mcpServer := NewServer(cfg, slog.Default(), tmpDir)
+	mcpServer := mcp.NewServer(cfg, slog.Default(), tmpDir)
 	mcpServer.SetConn(conn)
 	mcpServer.SetPolicy(pe)
 
@@ -92,7 +93,7 @@ func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*Server, *grpc.C
 	return mcpServer, conn, cleanup
 }
 
-func callMCPTool(t *testing.T, server *Server, name string, args map[string]interface{}) CallToolResult {
+func callMCPTool(t *testing.T, server *mcp.Server, name string, args map[string]interface{}) mcp.CallToolResult {
 	t.Helper()
 	callReq := map[string]interface{}{
 		"jsonrpc": "2.0",
@@ -116,7 +117,7 @@ func callMCPTool(t *testing.T, server *Server, name string, args map[string]inte
 	}
 
 	var callResp struct {
-		Result CallToolResult `json:"result"`
+		Result mcp.CallToolResult `json:"result"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &callResp); err != nil {
 		t.Fatalf("Unmarshal call response: %v\nOutput: %s", err, out.String())
@@ -127,9 +128,8 @@ func callMCPTool(t *testing.T, server *Server, name string, args map[string]inte
 
 func TestMCPServer_InitializeAndListTools(t *testing.T) {
 	cfg := &config.Config{SchedulerGRPCPort: "50051"}
-	server := NewServer(cfg, nil, ".")
+	server := mcp.NewServer(cfg, nil, ".")
 
-	// 1. Test initialize
 	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}` + "\n"
 	var out bytes.Buffer
 	err := server.Run(strings.NewReader(initReq), &out)
@@ -137,7 +137,7 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("Run failed: %v", err)
 	}
 
-	var initResp JSONRPCResponse
+	var initResp mcp.JSONRPCResponse
 	if err := json.Unmarshal(out.Bytes(), &initResp); err != nil {
 		t.Fatalf("Unmarshal init response: %v", err)
 	}
@@ -145,7 +145,6 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("unexpected error: %v", initResp.Error)
 	}
 
-	// 2. Test tools/list
 	listReq := `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}` + "\n"
 	out.Reset()
 	err = server.Run(strings.NewReader(listReq), &out)
@@ -157,7 +156,7 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		JSONRPC string `json:"jsonrpc"`
 		ID      int    `json:"id"`
 		Result  struct {
-			Tools []Tool `json:"tools"`
+			Tools []mcp.Tool `json:"tools"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &listResp); err != nil {
@@ -185,12 +184,16 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 	}
 
 	for _, tool := range listResp.Result.Tools {
-		expectedTools[tool.Name] = true
+		if _, ok := expectedTools[tool.Name]; ok {
+			expectedTools[tool.Name] = true
+		} else {
+			t.Errorf("unexpected tool registered: %s", tool.Name)
+		}
 	}
 
 	for toolName, found := range expectedTools {
 		if !found {
-			t.Errorf("missing expected tool: %s", toolName)
+			t.Errorf("expected tool not found: %s", toolName)
 		}
 	}
 }
@@ -205,48 +208,50 @@ func TestMCPServer_RealMCPExecutionAndApprovalWorkflow(t *testing.T) {
 		testCmd = "export DUMMY=1 && echo Hello remote execution"
 	}
 
-	// 1. Call packets_exec without approval ticket -> must be paused and request approval
 	res1 := callMCPTool(t, server, "packets_exec", map[string]interface{}{
 		"command": testCmd,
 	})
 	if !res1.IsError {
-		t.Fatalf("expected IsError: true for unapproved execution")
+		t.Fatalf("expected packets_exec to require approval, but succeeded: %s", res1.Content[0].Text)
 	}
-	prompt := res1.Content[0].Text
-	if !strings.Contains(prompt, "APPROVAL_REQUIRED") {
-		t.Fatalf("expected APPROVAL_REQUIRED, got: %s", prompt)
+	approveText := res1.Content[0].Text
+	if !strings.Contains(approveText, "APPROVAL_REQUIRED") {
+		t.Fatalf("expected APPROVAL_REQUIRED in output, got: %s", approveText)
+	}
+	if !strings.Contains(approveText, "Pending Request ID: appr_req_") {
+		t.Fatalf("expected Pending Request ID in output, got: %s", approveText)
 	}
 
-	// Extract Pending Request ID
 	var reqID string
-	for _, line := range strings.Split(prompt, "\n") {
+	for _, line := range strings.Split(approveText, "\n") {
 		if strings.HasPrefix(line, "Pending Request ID: ") {
 			reqID = strings.TrimSpace(strings.TrimPrefix(line, "Pending Request ID: "))
 			break
 		}
 	}
 	if reqID == "" {
-		t.Fatalf("could not extract pending request ID from prompt: %s", prompt)
+		t.Fatalf("could not extract pending request ID from %s", approveText)
 	}
 
-	// 2. Reject arbitrary execution without approval ticket
-	resUnapproved := callMCPTool(t, server, "packets_exec", map[string]interface{}{
+	res2 := callMCPTool(t, server, "packets_exec", map[string]interface{}{
 		"command": testCmd,
 	})
-	if !strings.Contains(resUnapproved.Content[0].Text, "APPROVAL_REQUIRED") {
-		t.Fatalf("expected unapproved call to be blocked again")
+	if !res2.IsError || !strings.Contains(res2.Content[0].Text, "APPROVAL_REQUIRED") {
+		t.Fatalf("second call without ticket should still require approval")
 	}
 
-	// 3. Human calls packets_approve tool
 	resApprove := callMCPTool(t, server, "packets_approve", map[string]interface{}{
 		"request_id": reqID,
 	})
 	if resApprove.IsError {
-		t.Fatalf("packets_approve returned error: %s", resApprove.Content[0].Text)
+		t.Fatalf("packets_approve failed: %s", resApprove.Content[0].Text)
 	}
-	approveText := resApprove.Content[0].Text
+	if !strings.Contains(resApprove.Content[0].Text, "Approval Ticket: ticket_") {
+		t.Fatalf("expected Approval Ticket in approve output, got: %s", resApprove.Content[0].Text)
+	}
+
 	var ticketID string
-	for _, line := range strings.Split(approveText, "\n") {
+	for _, line := range strings.Split(resApprove.Content[0].Text, "\n") {
 		if strings.HasPrefix(line, "Approval Ticket: ") {
 			ticketID = strings.TrimSpace(strings.TrimPrefix(line, "Approval Ticket: "))
 			break
@@ -256,7 +261,6 @@ func TestMCPServer_RealMCPExecutionAndApprovalWorkflow(t *testing.T) {
 		t.Fatalf("could not extract ticket ID from approval output: %s", approveText)
 	}
 
-	// 4. Submit packets_exec with the valid approval ticket -> executes via scheduler gRPC and streams real logs!
 	resExec := callMCPTool(t, server, "packets_exec", map[string]interface{}{
 		"command":         testCmd,
 		"approval_ticket": ticketID,
@@ -272,7 +276,6 @@ func TestMCPServer_RealMCPExecutionAndApprovalWorkflow(t *testing.T) {
 		t.Errorf("expected streamed command output in execution logs, got: %s", execOutput)
 	}
 
-	// Extract Job ID
 	var jobID string
 	for _, part := range strings.Fields(execOutput) {
 		if strings.HasPrefix(part, "j_") {
@@ -280,47 +283,43 @@ func TestMCPServer_RealMCPExecutionAndApprovalWorkflow(t *testing.T) {
 			break
 		}
 	}
-
-	// 5. Test packets_logs for this real job
-	if jobID != "" {
-		resLogs := callMCPTool(t, server, "packets_logs", map[string]interface{}{
-			"job_id": jobID,
-		})
-		if resLogs.IsError {
-			t.Errorf("packets_logs returned error: %s", resLogs.Content[0].Text)
-		}
-		if !strings.Contains(resLogs.Content[0].Text, "Hello remote execution") {
-			t.Errorf("packets_logs missing output: %s", resLogs.Content[0].Text)
-		}
-
-		// Test packets_artifacts query
-		resArt := callMCPTool(t, server, "packets_artifacts", map[string]interface{}{
-			"job_id": jobID,
-		})
-		// If no artifacts produced, reports no artifacts
-		if !strings.Contains(resArt.Content[0].Text, "No artifact") && resArt.IsError {
-			t.Errorf("unexpected packets_artifacts error: %s", resArt.Content[0].Text)
-		}
+	if jobID == "" {
+		t.Fatalf("could not extract job ID from: %s", execOutput)
 	}
 
-	// 6. Replay attack: try using the same ticket again -> must be rejected as single-use
+	resLogs := callMCPTool(t, server, "packets_logs", map[string]interface{}{
+		"job_id": jobID,
+	})
+	if resLogs.IsError {
+		t.Fatalf("packets_logs failed: %s", resLogs.Content[0].Text)
+	}
+	if !strings.Contains(resLogs.Content[0].Text, "Hello remote execution") {
+		t.Errorf("expected logs to contain output, got: %s", resLogs.Content[0].Text)
+	}
+
+	resArt := callMCPTool(t, server, "packets_artifacts", map[string]interface{}{
+		"job_id": jobID,
+	})
+	if !resArt.IsError || !strings.Contains(resArt.Content[0].Text, "No artifacts produced") {
+		t.Logf("packets_artifacts response: %s", resArt.Content[0].Text)
+	}
+
 	resReplay := callMCPTool(t, server, "packets_exec", map[string]interface{}{
 		"command":         testCmd,
 		"approval_ticket": ticketID,
 	})
-	if !resReplay.IsError && !strings.Contains(resReplay.Content[0].Text, "APPROVAL_REQUIRED") {
-		t.Fatalf("expected reused ticket to be rejected, got: %v", resReplay.Content[0].Text)
+	if !resReplay.IsError || !strings.Contains(resReplay.Content[0].Text, "already used") {
+		t.Errorf("expected replay with consumed ticket to be rejected, got: isError=%v %s", resReplay.IsError, resReplay.Content[0].Text)
 	}
 }
 
 func TestMCPServer_RealBuildAndTestExecution(t *testing.T) {
-	pe := policy.NewPolicyEngine(policy.ApprovalNever) // Allow without approval for this test
+	pe := policy.NewPolicyEngine(policy.ApprovalNever)
 	server, _, cleanup := setupMCPTestServer(t, pe)
 	defer cleanup()
 
 	testCmd := "echo Build Completed"
 
-	// 1. packets_build
 	resBuild := callMCPTool(t, server, "packets_build", map[string]interface{}{
 		"command":   testCmd,
 		"toolchain": "custom",
@@ -335,7 +334,6 @@ func TestMCPServer_RealBuildAndTestExecution(t *testing.T) {
 		t.Errorf("expected real execution logs, got: %s", resBuild.Content[0].Text)
 	}
 
-	// 2. packets_test
 	testCmd2 := "echo Test Passed"
 	resTest := callMCPTool(t, server, "packets_test", map[string]interface{}{
 		"command":   testCmd2,
@@ -361,7 +359,6 @@ func TestMCPServer_RemoteEnvCheckViaGRPC(t *testing.T) {
 	if resCheck.IsError {
 		t.Fatalf("packets_env_check failed: %s", resCheck.Content[0].Text)
 	}
-	// Verify it reached remote environment gRPC server
 	if !strings.Contains(resCheck.Content[0].Text, "all_ready") {
 		t.Errorf("expected all_ready in response, got: %s", resCheck.Content[0].Text)
 	}
@@ -369,11 +366,10 @@ func TestMCPServer_RemoteEnvCheckViaGRPC(t *testing.T) {
 
 func TestMCPServer_ProgressNotification(t *testing.T) {
 	cfg := &config.Config{SchedulerGRPCPort: "50051"}
-	server := NewServer(cfg, nil, ".")
+	server := mcp.NewServer(cfg, nil, ".")
 
 	var out bytes.Buffer
-	// Set writer through running empty reader or directly
-	server.writer = &out
+	server.SetWriter(&out)
 
 	server.SendProgress("token-abc", 42, 100, "Gradle assembleDebug running")
 
@@ -405,4 +401,3 @@ func TestMCPServer_ProgressNotification(t *testing.T) {
 		t.Errorf("expected message, got %s", notif.Params.Message)
 	}
 }
-

@@ -28,6 +28,10 @@ func readChunkByHash(workspaceDir string, manifest *apitypes.WorkspaceManifest, 
 	return os.ReadFile(absPath)
 }
 
+func ReadChunkByHash(workspaceDir string, manifest *apitypes.WorkspaceManifest, hash string) ([]byte, error) {
+	return readChunkByHash(workspaceDir, manifest, hash)
+}
+
 func readChunkByHashReader(workspaceDir string, manifest *apitypes.WorkspaceManifest, hash string) (io.ReadCloser, int64, error) { //nolint:unused
 	idx := buildHashIndex(manifest)
 	relPath, ok := idx[hash]

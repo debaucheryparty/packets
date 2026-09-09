@@ -30,9 +30,7 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 
 	manifestMarkerFile := filepath.Join(targetDir, ".packets_manifest.json")
 
-	// Deletion detection: compare against previous manifest if present.
-	// This is read-only; we never update it until extraction fully succeeds.
-	oldManifestFiles := make(map[string]string) // path -> hash
+	oldManifestFiles := make(map[string]string)
 	if oldData, err := os.ReadFile(manifestMarkerFile); err == nil {
 		var oldManifest apitypes.WorkspaceManifest
 		if err := json.Unmarshal(oldData, &oldManifest); err == nil {
@@ -49,14 +47,12 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 		newFilesMap[filepath.Clean(f.Path)] = true
 	}
 
-	// Remove files that existed in the previous manifest but are absent in the new one.
 	for oldPath := range oldManifestFiles {
 		if !newFilesMap[oldPath] {
 			delPath := filepath.Join(targetDir, filepath.FromSlash(oldPath))
-			_ = os.Chmod(delPath, 0o666) // ensure writable on Windows
+			_ = os.Chmod(delPath, 0o666)
 			_ = os.Remove(delPath)
 
-			// Prune empty parent directories up to (but not including) targetDir.
 			parent := filepath.Dir(delPath)
 			for parent != targetDir && strings.HasPrefix(parent, targetDir) {
 				entries, err := os.ReadDir(parent)
@@ -69,7 +65,6 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 		}
 	}
 
-	// Extract all files from the new snapshot.
 	for _, f := range manifest.Files {
 		if err := validatePath(f.Path); err != nil {
 			return err
@@ -78,7 +73,7 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 		destPath := filepath.Join(targetDir, filepath.FromSlash(f.Path))
 
 		if f.IsDir {
-			// If a regular file previously existed at this path, remove it first.
+
 			if fi, err := os.Lstat(destPath); err == nil && !fi.IsDir() {
 				_ = os.Remove(destPath)
 			}
@@ -99,12 +94,10 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 			continue
 		}
 
-		// If a directory previously existed at this path, remove it first.
 		if fi, err := os.Lstat(destPath); err == nil && fi.IsDir() {
 			_ = os.RemoveAll(destPath)
 		}
 
-		// Skip downloading if the identical file is already on disk.
 		cleanedPath := filepath.Clean(f.Path)
 		if prevHash, exists := oldManifestFiles[cleanedPath]; exists && prevHash == f.Hash {
 			if fi, err := os.Stat(destPath); err == nil && fi.Size() == f.Size {
@@ -125,16 +118,10 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 		cr.Close() //nolint:errcheck
 	}
 
-	// Post-extraction integrity verification: re-scan the target directory and confirm
-	// the resulting RootHash matches the expected snapshot RootHash. This catches
-	// corrupted chunks, incomplete downloads, or filesystem issues.
 	if err := verifyExtractedRootHash(targetDir, manifest.RootHash, manifestMarkerFile); err != nil {
 		return err
 	}
 
-	// Only write the manifest marker once we have verified the extraction is complete
-	// and correct. This prevents a partially-extracted workspace from being treated as
-	// a valid baseline for the next incremental sync.
 	if mBytes, err := json.Marshal(manifest); err == nil {
 		tmpFile := manifestMarkerFile + ".tmp"
 		if writeErr := os.WriteFile(tmpFile, mBytes, 0o644); writeErr == nil {
@@ -147,21 +134,15 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 	return nil
 }
 
-// verifyExtractedRootHash scans targetDir (excluding the manifest marker itself and
-// other build-cache directories that ExtractSnapshot intentionally leaves in place)
-// and checks that the computed RootHash equals expectedHash.  On mismatch it removes
-// the stale manifest marker so the next sync performs a full re-extraction.
 func verifyExtractedRootHash(targetDir, expectedHash, manifestMarkerFile string) error {
-	// Re-scan the directory using the same logic as ScanWorkspace so that the
-	// hash is computed the same way on both sides.  We pass the marker file name
-	// as an extra ignore pattern so it is not included in the hash.
+
 	markerName := filepath.Base(manifestMarkerFile)
 	got, err := ScanWorkspace(targetDir, []string{markerName})
 	if err != nil {
 		return fmt.Errorf("ExtractSnapshot verify scan: %w", err)
 	}
 	if got.RootHash != expectedHash {
-		// Remove the marker so the next sync does a full re-extraction.
+
 		_ = os.Remove(manifestMarkerFile)
 		return fmt.Errorf(
 			"ExtractSnapshot integrity check failed: expected RootHash %s, got %s (workspace may be corrupted)",

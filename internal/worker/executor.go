@@ -87,7 +87,7 @@ func (e *Executor) Execute(ctx context.Context, job apitypes.Job) (apitypes.Exec
 		if err := os.MkdirAll(srcDir, 0o755); err != nil {
 			return apitypes.ExecutionResult{}, fmt.Errorf("Executor.Execute mkdir persistent workspace: %w", err)
 		}
-		cleanup = func() {} // Persistent workspace survives between commands
+		cleanup = func() {}
 	} else {
 		jobDir, err := os.MkdirTemp(e.tempDir, "packets-job-"+string(job.ID)+"-")
 		if err != nil {
@@ -210,19 +210,15 @@ func (e *Executor) executeHost(ctx context.Context, job apitypes.Job, srcDir str
 	cmd.Dir = srcDir
 	cmd.Env = os.Environ()
 
-	// Phase 10: Bind persistent dependency caches for this toolchain.
-	// This redirects GRADLE_USER_HOME, CARGO_HOME, GOPATH, etc. to stable
-	// per-owner directories that survive across sequential builds.
 	owner := job.Owner
 	if owner == "" {
 		owner = "default"
 	}
 	if e.depCache != nil {
 		if binding, err := e.depCache.Bind(ctx, owner, job.Toolchain, srcDir); err == nil {
-			// Overlay cache env vars on top of the current environment.  A cache
-			// env var always wins over the inherited system value.
+
 			cmd.Env = overrideEnv(cmd.Env, binding.EnvSlice())
-			// Materialise workspace-relative cache dirs (e.g. node_modules, .west).
+
 			_ = binding.ApplyBindMounts(srcDir)
 		} else {
 			e.logger.WarnContext(ctx, "dep cache bind failed",
@@ -249,7 +245,6 @@ func (e *Executor) executeHost(ctx context.Context, job apitypes.Job, srcDir str
 		}, nil
 	}
 
-	// Monitor context cancellation to kill the full process tree
 	doneCh := make(chan struct{})
 	defer close(doneCh)
 
@@ -350,14 +345,11 @@ func (e *Executor) Status(ctx context.Context, id apitypes.JobID) (apitypes.JobS
 	return apitypes.JobStateSucceeded, nil
 }
 
-// overrideEnv merges base env slice with overrides.  If a key in overrides
-// already exists in base, the base value is replaced; otherwise the override
-// is appended.  This lets dep-cache bindings win over inherited system values.
 func overrideEnv(base, overrides []string) []string {
 	if len(overrides) == 0 {
 		return base
 	}
-	// Build a lookup of override keys.
+
 	keys := make(map[string]string, len(overrides))
 	for _, kv := range overrides {
 		idx := len(kv)
@@ -369,7 +361,7 @@ func overrideEnv(base, overrides []string) []string {
 		}
 		keys[kv[:idx]] = kv
 	}
-	// Rebuild base, replacing any key that appears in overrides.
+
 	out := make([]string, 0, len(base)+len(overrides))
 	for _, kv := range base {
 		idx := len(kv)
@@ -382,12 +374,12 @@ func overrideEnv(base, overrides []string) []string {
 		key := kv[:idx]
 		if replacement, ok := keys[key]; ok {
 			out = append(out, replacement)
-			delete(keys, key) // mark consumed
+			delete(keys, key)
 		} else {
 			out = append(out, kv)
 		}
 	}
-	// Append any overrides that were not already in base.
+
 	for _, kv := range overrides {
 		idx := len(kv)
 		for i, c := range kv {

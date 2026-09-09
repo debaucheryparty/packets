@@ -1,4 +1,4 @@
-package cache
+package tests
 
 import (
 	"context"
@@ -7,12 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/debaucheryparty/packets/internal/cache"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
 func TestDepManager_Bind_Go(t *testing.T) {
 	root := t.TempDir()
-	mgr := NewDepManager(root)
+	mgr := cache.NewDepManager(root)
 	wsDir := t.TempDir()
 
 	b, err := mgr.Bind(context.Background(), "testowner", apitypes.ToolchainGo, wsDir)
@@ -39,7 +40,6 @@ func TestDepManager_Bind_Go(t *testing.T) {
 		t.Error("expected GOCACHE env var")
 	}
 
-	// Verify the cache directories were created.
 	for _, e := range b.Env {
 		parts := strings.SplitN(e, "=", 2)
 		if len(parts) == 2 {
@@ -52,7 +52,7 @@ func TestDepManager_Bind_Go(t *testing.T) {
 
 func TestDepManager_Bind_Rust(t *testing.T) {
 	root := t.TempDir()
-	mgr := NewDepManager(root)
+	mgr := cache.NewDepManager(root)
 	wsDir := t.TempDir()
 
 	b, err := mgr.Bind(context.Background(), "testowner", apitypes.ToolchainRust, wsDir)
@@ -79,7 +79,7 @@ func TestDepManager_Bind_Rust(t *testing.T) {
 
 func TestDepManager_Bind_Android(t *testing.T) {
 	root := t.TempDir()
-	mgr := NewDepManager(root)
+	mgr := cache.NewDepManager(root)
 	wsDir := t.TempDir()
 
 	b, err := mgr.Bind(context.Background(), "testowner", apitypes.ToolchainAndroid, wsDir)
@@ -100,7 +100,7 @@ func TestDepManager_Bind_Android(t *testing.T) {
 
 func TestDepManager_Bind_Node(t *testing.T) {
 	root := t.TempDir()
-	mgr := NewDepManager(root)
+	mgr := cache.NewDepManager(root)
 	wsDir := t.TempDir()
 
 	b, err := mgr.Bind(context.Background(), "testowner", apitypes.ToolchainNode, wsDir)
@@ -118,7 +118,6 @@ func TestDepManager_Bind_Node(t *testing.T) {
 		t.Error("expected npm_config_cache env var")
 	}
 
-	// node_modules bind-mount should be present
 	if len(b.BindMounts) == 0 {
 		t.Error("expected bind-mount for node_modules")
 	}
@@ -126,7 +125,7 @@ func TestDepManager_Bind_Node(t *testing.T) {
 
 func TestDepManager_ApplyBindMounts(t *testing.T) {
 	root := t.TempDir()
-	mgr := NewDepManager(root)
+	mgr := cache.NewDepManager(root)
 	wsDir := t.TempDir()
 
 	b, err := mgr.Bind(context.Background(), "testowner", apitypes.ToolchainNode, wsDir)
@@ -158,25 +157,23 @@ func TestDepManager_ApplyBindMounts(t *testing.T) {
 	}
 }
 
-// TestDepManager_OwnerIsolation verifies that two owners get distinct cache
-// directories so their dependencies never interfere.
 func TestDepManager_OwnerIsolation(t *testing.T) {
 	root := t.TempDir()
-	mgr := NewDepManager(root)
+	mgr := cache.NewDepManager(root)
 	ws := t.TempDir()
 
 	b1, _ := mgr.Bind(context.Background(), "alice", apitypes.ToolchainGo, ws)
 	b2, _ := mgr.Bind(context.Background(), "bob", apitypes.ToolchainGo, ws)
 
-	env1 := envMap(b1.Env)
-	env2 := envMap(b2.Env)
+	env1 := cacheEnvMap(b1.Env)
+	env2 := cacheEnvMap(b2.Env)
 
 	if env1["GOPATH"] == env2["GOPATH"] {
 		t.Errorf("alice and bob share the same GOPATH: %s", env1["GOPATH"])
 	}
 }
 
-func envMap(env []string) map[string]string {
+func cacheEnvMap(env []string) map[string]string {
 	m := make(map[string]string, len(env))
 	for _, e := range env {
 		parts := strings.SplitN(e, "=", 2)
@@ -187,10 +184,8 @@ func envMap(env []string) map[string]string {
 	return m
 }
 
-// TestFingerprintEnv verifies that FingerprintEnv returns a non-empty hash
-// even on a machine where most tools are missing.
 func TestFingerprintEnv(t *testing.T) {
-	fp, err := FingerprintEnv(context.Background())
+	fp, err := cache.FingerprintEnv(context.Background())
 	if err != nil {
 		t.Fatalf("FingerprintEnv: %v", err)
 	}

@@ -1,4 +1,4 @@
-package cli
+package tests
 
 import (
 	"archive/tar"
@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/debaucheryparty/packets/internal/cli"
 	"github.com/debaucheryparty/packets/internal/config"
 	pb "github.com/debaucheryparty/packets/proto/v1"
 	"google.golang.org/grpc"
@@ -36,8 +37,85 @@ func (m *mockSchedulerDownloadServer) DownloadArtifact(req *pb.DownloadArtifactR
 	return nil
 }
 
+func TestGenerateCacheKey_DebugVsRelease(t *testing.T) {
+	ctx := context.Background()
+	tempDir, err := os.MkdirTemp("", "packets-hash-test-*")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	keyDebug, err := cli.GenerateCacheKey(ctx, cli.CacheKeyInputs{
+		ProjectID:   "proj-123",
+		Dir:         tempDir,
+		Toolchain:   "android",
+		Runner:      "host",
+		SourceMode:  "workspace",
+		SnapshotRef: "snap-abc",
+		CommandArgs: []string{"assembleDebug"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateCacheKey debug: %v", err)
+	}
+
+	keyRelease, err := cli.GenerateCacheKey(ctx, cli.CacheKeyInputs{
+		ProjectID:   "proj-123",
+		Dir:         tempDir,
+		Toolchain:   "android",
+		Runner:      "host",
+		SourceMode:  "workspace",
+		SnapshotRef: "snap-abc",
+		CommandArgs: []string{"assembleRelease"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateCacheKey release: %v", err)
+	}
+
+	if keyDebug == keyRelease {
+		t.Errorf("expected assembleDebug and assembleRelease to produce different cache keys, got %q", keyDebug)
+	}
+}
+
+func TestGenerateCacheKey_ProjectIDSeparation(t *testing.T) {
+	ctx := context.Background()
+	tempDir, err := os.MkdirTemp("", "packets-hash-test-*")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	keyProjA, err := cli.GenerateCacheKey(ctx, cli.CacheKeyInputs{
+		ProjectID:   "proj-A",
+		Dir:         tempDir,
+		Toolchain:   "rust",
+		Runner:      "host",
+		SourceMode:  "workspace",
+		SnapshotRef: "snap-abc",
+		CommandArgs: []string{"cargo", "build"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateCacheKey proj-A: %v", err)
+	}
+
+	keyProjB, err := cli.GenerateCacheKey(ctx, cli.CacheKeyInputs{
+		ProjectID:   "proj-B",
+		Dir:         tempDir,
+		Toolchain:   "rust",
+		Runner:      "host",
+		SourceMode:  "workspace",
+		SnapshotRef: "snap-abc",
+		CommandArgs: []string{"cargo", "build"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateCacheKey proj-B: %v", err)
+	}
+
+	if keyProjA == keyProjB {
+		t.Errorf("expected different project IDs to produce different cache keys, got %q", keyProjA)
+	}
+}
+
 func TestPullAndExtractArtifact_TarGz(t *testing.T) {
-	// Create sample tar.gz payload
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
@@ -74,7 +152,7 @@ func TestPullAndExtractArtifact_TarGz(t *testing.T) {
 	}
 
 	destDir := t.TempDir()
-	err = PullAndExtractArtifact(context.Background(), cfg, slog.Default(), "job-tar-123", destDir)
+	err = cli.PullAndExtractArtifact(context.Background(), cfg, slog.Default(), "job-tar-123", destDir)
 	if err != nil {
 		t.Fatalf("PullAndExtractArtifact failed: %v", err)
 	}
@@ -109,7 +187,7 @@ func TestPullAndExtractArtifact_RawBinary(t *testing.T) {
 	}
 
 	destDir := t.TempDir()
-	err = PullAndExtractArtifact(context.Background(), cfg, slog.Default(), "job-bin-456", destDir)
+	err = cli.PullAndExtractArtifact(context.Background(), cfg, slog.Default(), "job-bin-456", destDir)
 	if err != nil {
 		t.Fatalf("PullAndExtractArtifact failed: %v", err)
 	}

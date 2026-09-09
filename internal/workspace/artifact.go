@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 )
 
-// ExtractArtifact unpacks tar.gz, zip, or saves raw artifact data into destDir.
 func ExtractArtifact(data []byte, destDir, defaultFileName string) error {
 	if len(data) == 0 {
 		return fmt.Errorf("artifact payload is empty")
@@ -19,7 +18,6 @@ func ExtractArtifact(data []byte, destDir, defaultFileName string) error {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
 
-	// 1. Check for tar.gz (gzip magic bytes: 0x1f, 0x8b)
 	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
 		if err := ExtractTarGz(bytes.NewReader(data), destDir); err != nil {
 			return fmt.Errorf("extract tar.gz artifact: %w", err)
@@ -27,7 +25,6 @@ func ExtractArtifact(data []byte, destDir, defaultFileName string) error {
 		return nil
 	}
 
-	// 2. Check for zip (PK\x03\x04)
 	if len(data) >= 4 && data[0] == 0x50 && data[1] == 0x4b && data[2] == 0x03 && data[3] == 0x04 {
 		zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 		if err != nil {
@@ -54,7 +51,6 @@ func ExtractArtifact(data []byte, destDir, defaultFileName string) error {
 		return nil
 	}
 
-	// 3. Raw file
 	if defaultFileName == "" {
 		defaultFileName = "artifact.bin"
 	}

@@ -232,7 +232,6 @@ Supported types: android, zephyr, rust, go, node, python, cmake, java, swift, ru
 				}
 			}
 
-			// Check if component of this type already exists, update path if so
 			found := false
 			for i, c := range projectCfg.Components {
 				if strings.ToLower(c.Type) == compType {
@@ -342,4 +341,3 @@ func newEnvResetCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command 
 		},
 	}
 }
-

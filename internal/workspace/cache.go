@@ -54,3 +54,13 @@ func saveLocalCache(workspaceDir string, c *localManifestCache) error {
 	}
 	return os.WriteFile(cachePath(workspaceDir), data, 0o644)
 }
+
+type LocalManifestCache = localManifestCache
+
+func LoadLocalCache(workspaceDir string) (*LocalManifestCache, error) {
+	return loadLocalCache(workspaceDir)
+}
+
+func SaveLocalCache(workspaceDir string, c *LocalManifestCache) error {
+	return saveLocalCache(workspaceDir, c)
+}

@@ -38,7 +38,6 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			fmt.Println("Initializing Packets Remote Development Session...")
 			fmt.Printf("Project root: %s\n\n", absDir)
 
-			// 1. Detect project topology
 			envMgr := environment.NewManager()
 			topo, err := envMgr.Detect(absDir)
 			if err != nil {
@@ -55,7 +54,6 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			}
 			fmt.Println()
 
-			// 2. Check environment requirements
 			fmt.Println("Checking remote toolchain & SDK readiness...")
 			report, err := envMgr.Check(ctx, absDir)
 			if err != nil {
@@ -76,7 +74,6 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			}
 			fmt.Println()
 
-			// 3. Generate AI instructions and MCP configs
 			fmt.Println("Configuring AI Agent Integration...")
 			if err := instructions.GenerateInstructions(absDir); err != nil {
 				logger.WarnContext(ctx, "failed generating instructions", slog.String("err", err.Error()))

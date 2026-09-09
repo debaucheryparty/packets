@@ -1,9 +1,11 @@
-package config
+package tests
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/debaucheryparty/packets/internal/config"
 )
 
 func TestProfileSaveAndLoad(t *testing.T) {
@@ -11,17 +13,17 @@ func TestProfileSaveAndLoad(t *testing.T) {
 	t.Setenv("USERPROFILE", tempHome)
 	t.Setenv("HOME", tempHome)
 
-	prof := &Profile{
+	prof := &config.Profile{
 		ServerAddr: "100.64.0.1:50051",
 		AuthToken:  "test-secret-token-12345",
 		TLSEnabled: true,
 	}
 
-	if err := SaveProfile(prof); err != nil {
+	if err := config.SaveProfile(prof); err != nil {
 		t.Fatalf("SaveProfile failed: %v", err)
 	}
 
-	loaded, err := LoadProfile()
+	loaded, err := config.LoadProfile()
 	if err != nil {
 		t.Fatalf("LoadProfile failed: %v", err)
 	}
@@ -54,15 +56,15 @@ func TestProfileLocalOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	loaded, err := LoadProfile()
+	loaded, err := config.LoadProfile()
 	if err != nil {
 		t.Fatalf("LoadProfile failed: %v", err)
 	}
 
 	if loaded.ServerAddr != "127.0.0.1:50051" {
-		t.Errorf("Expected local server addr, got %s", loaded.ServerAddr)
+		t.Errorf("expected local override server_addr 127.0.0.1:50051, got %s", loaded.ServerAddr)
 	}
 	if loaded.AuthToken != "local-token" {
-		t.Errorf("Expected local auth token, got %s", loaded.AuthToken)
+		t.Errorf("expected local override auth_token local-token, got %s", loaded.AuthToken)
 	}
 }

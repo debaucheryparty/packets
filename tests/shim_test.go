@@ -1,4 +1,4 @@
-package shim
+package tests
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/debaucheryparty/packets/internal/shim"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
@@ -20,7 +21,7 @@ func noopCommand() (string, []string) {
 
 func TestFallbackRunner(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := NewFallbackRunner(logger)
+	runner := shim.NewFallbackRunner(logger)
 
 	var remoteCalled bool
 	remoteCall := func(ctx context.Context) error {
@@ -46,7 +47,7 @@ func TestFallbackRunner(t *testing.T) {
 
 func TestFallbackRunner_Timeout(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := NewFallbackRunner(logger)
+	runner := shim.NewFallbackRunner(logger)
 
 	var remoteCalled bool
 	remoteCall := func(ctx context.Context) error {
@@ -63,7 +64,7 @@ func TestFallbackRunner_Timeout(t *testing.T) {
 
 	err := runner.ExecuteWithFallback(context.Background(), def, ".", nil, remoteCall)
 	if err != nil {
-		t.Errorf("expected local fallback to succeed after timeout, got %v", err)
+		t.Errorf("expected local fallback on timeout, got %v", err)
 	}
 	if !remoteCalled {
 		t.Error("expected remote strategy to be called")
