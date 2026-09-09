@@ -206,6 +206,17 @@ func (s *JobStore) ListRecentJobs(ctx context.Context, limit int) ([]apitypes.Jo
 	return jobs, rows.Err()
 }
 
+func (s *JobStore) GetLatestProjectArtifactJob(ctx context.Context, projectID string) (apitypes.Job, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, project_id, toolchain, cache_key, state, provider, runner, source_mode, snapshot_ref,
+		        command_args, artifact_paths, image, error, owner,
+		        submitted_at, completed_at, artifact_ref
+		 FROM jobs WHERE project_id = ? AND state = ? AND artifact_ref != ''
+		 ORDER BY submitted_at DESC LIMIT 1`, projectID, int(apitypes.JobStateSucceeded),
+	)
+	return scanJob(row)
+}
+
 func (s *JobStore) Lookup(ctx context.Context, key string) (apitypes.ArtifactRef, bool, error) {
 	var ref string
 	err := s.db.QueryRowContext(ctx,

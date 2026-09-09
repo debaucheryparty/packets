@@ -194,7 +194,12 @@ func (s *Server) DownloadArtifact(req *pb.DownloadArtifactRequest, stream pb.Sch
 	ctx := stream.Context()
 	job, err := s.store.GetJob(ctx, apitypes.JobID(req.JobId))
 	if err != nil {
-		return status.Errorf(codes.NotFound, "job not found: %v", err)
+		projJob, projErr := s.store.GetLatestProjectArtifactJob(ctx, req.JobId)
+		if projErr == nil {
+			job = projJob
+		} else {
+			return status.Errorf(codes.NotFound, "job not found: %v", err)
+		}
 	}
 
 	if job.State != apitypes.JobStateSucceeded {
