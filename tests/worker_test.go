@@ -23,11 +23,7 @@ func (p *workerTestPublisher) Publish(jobID apitypes.JobID, line string) {
 }
 
 func TestExecutor_HostExecution(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "packets-worker-test-*")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	wsDir := filepath.Join(tempDir, "workspaces")
 	pub := &workerTestPublisher{}
@@ -119,11 +115,7 @@ func TestExecutor_HostExecution(t *testing.T) {
 }
 
 func TestExecutor_CancellationKillsProcess(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "packets-cancel-test-*")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	wsDir := filepath.Join(tempDir, "workspaces")
 	pub := &workerTestPublisher{}

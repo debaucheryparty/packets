@@ -79,7 +79,7 @@ func pullLatestProjectArtifacts(ctx context.Context, cfg *config.Config, logger 
 	if err != nil {
 		return fmt.Errorf("connect to scheduler: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := PullAndExtractArtifact(ctx, cfg, logger, projectID, destDir); err != nil {
 		return fmt.Errorf("no specific job specified; please pass --job <job-id> (e.g. packets pull --job <id>) or run after a build: %w", err)

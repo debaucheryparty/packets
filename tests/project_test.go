@@ -9,11 +9,7 @@ import (
 )
 
 func TestResolveProjectID_ProjectJSON(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "packets-project-test-*")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	dotPackets := filepath.Join(tempDir, ".packets")
 	if err := os.MkdirAll(dotPackets, 0o755); err != nil {
@@ -32,11 +28,7 @@ func TestResolveProjectID_ProjectJSON(t *testing.T) {
 }
 
 func TestResolveProjectID_FallbackDeterministic(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "packets-project-test-*")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	id1 := project.ResolveProjectID(tempDir)
 	id2 := project.ResolveProjectID(tempDir)

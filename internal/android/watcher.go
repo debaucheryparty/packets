@@ -155,7 +155,7 @@ func quickHash(path string, modTime time.Time, size int64) string {
 	h := sha256.New()
 	h.Write([]byte(path))
 	h.Write([]byte(modTime.String()))
-	fmt.Fprintf(h, "%d", size)
+	_, _ = fmt.Fprintf(h, "%d", size)
 
 	if f, err := os.Open(path); err == nil {
 		buf := make([]byte, 4096)

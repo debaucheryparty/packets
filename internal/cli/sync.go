@@ -81,7 +81,7 @@ Supports incremental chunk synchronization and full synchronization with deletio
 			if err != nil {
 				return fmt.Errorf("connect to scheduler: %w", err)
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 
 			snapshotRef, err := workspace.UploadWorkspace(ctx, conn, absDir, fullFlag)
 			if err != nil {
