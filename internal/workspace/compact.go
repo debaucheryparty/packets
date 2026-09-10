@@ -42,7 +42,7 @@ func (c *Compactor) Compact(ctx context.Context, owner string, keepDuration time
 		}
 		var manifest apitypes.WorkspaceManifest
 		err = json.NewDecoder(r).Decode(&manifest)
-		r.Close() //nolint:errcheck
+		_ = r.Close()
 		if err != nil {
 			continue
 		}

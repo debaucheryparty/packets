@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -115,14 +116,14 @@ func (d *DockerClient) Run(ctx context.Context, opts RunOpts) (RunResult, error)
 
 		err := cmd.Start()
 		if err != nil {
-			stdoutW.Close() //nolint:errcheck
-			stderrW.Close() //nolint:errcheck
+			_ = stdoutW.Close()
+			_ = stderrW.Close()
 			return RunResult{}, fmt.Errorf("DockerClient.Run start: %w", err)
 		}
 
 		waitErr := cmd.Wait()
-		stdoutW.Close() //nolint:errcheck
-		stderrW.Close() //nolint:errcheck
+		_ = stdoutW.Close()
+		_ = stderrW.Close()
 		wg.Wait()
 
 		result := RunResult{
@@ -162,7 +163,8 @@ func (d *DockerClient) Run(ctx context.Context, opts RunOpts) (RunResult, error)
 }
 
 func isExitError(err error, target **exec.ExitError) bool {
-	if ee, ok := err.(*exec.ExitError); ok { //nolint:errorlint
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
 		*target = ee
 		return true
 	}

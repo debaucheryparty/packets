@@ -54,7 +54,7 @@ func main() {
 		logger.Error("failed to init storage", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	defer store.Close() //nolint:errcheck
+	defer func() { _ = store.Close() }()
 
 	var objectStore storage.ObjectStore
 	if cfg.ObjectStoreType != "" {

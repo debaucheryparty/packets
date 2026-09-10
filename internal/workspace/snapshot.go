@@ -21,7 +21,7 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 	if err != nil {
 		return fmt.Errorf("ExtractSnapshot download manifest: %w", err)
 	}
-	defer r.Close() //nolint:errcheck
+	defer func() { _ = r.Close() }()
 
 	var manifest apitypes.WorkspaceManifest
 	if err := json.NewDecoder(r).Decode(&manifest); err != nil {
@@ -112,10 +112,10 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 		}
 
 		if err := writeFile(destPath, os.FileMode(f.Mode), cr); err != nil {
-			cr.Close() //nolint:errcheck
+			_ = cr.Close()
 			return fmt.Errorf("ExtractSnapshot write %s: %w", f.Path, err)
 		}
-		cr.Close() //nolint:errcheck
+		_ = cr.Close()
 	}
 
 	if err := verifyExtractedRootHash(targetDir, manifest.RootHash, manifestMarkerFile); err != nil {
@@ -170,7 +170,7 @@ func writeFile(dest string, mode os.FileMode, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close() //nolint:errcheck
+	defer func() { _ = f.Close() }()
 	_, err = io.Copy(f, r)
 	return err
 }
@@ -180,7 +180,7 @@ func ExtractTarGz(r io.Reader, targetDir string) error {
 	if err != nil {
 		return fmt.Errorf("ExtractTarGz gzip: %w", err)
 	}
-	defer gz.Close() //nolint:errcheck
+	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
 	for {

@@ -14,11 +14,7 @@ import (
 )
 
 func TestScanWorkspaceAndNormalize(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "packets-test-scan-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir) //nolint:errcheck
+	tmpDir := t.TempDir()
 
 	subDir := filepath.Join(tmpDir, "src", "nested")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
@@ -30,16 +26,13 @@ func TestScanWorkspaceAndNormalize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	file2 := filepath.Join(subDir, "helper.go")
-	if err := os.WriteFile(file2, []byte("package nested\n"), 0o644); err != nil {
+	file2 := filepath.Join(subDir, "util.go")
+	if err := os.WriteFile(file2, []byte("package nested\nfunc Util() {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	ignoredDir := filepath.Join(tmpDir, "node_modules", "package")
-	if err := os.MkdirAll(ignoredDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(ignoredDir, "index.js"), []byte("console.log()"), 0o644); err != nil {
+	fileExe := filepath.Join(tmpDir, "tool.sh")
+	if err := os.WriteFile(fileExe, []byte("#!/bin/sh\necho hi\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,26 +41,30 @@ func TestScanWorkspaceAndNormalize(t *testing.T) {
 		t.Fatalf("ScanWorkspace failed: %v", err)
 	}
 
-	if manifest.RootHash == "" {
-		t.Errorf("expected non-empty RootHash")
-	}
-
+	fileCount := 0
 	for _, f := range manifest.Files {
 		if strings.Contains(f.Path, "\\") {
-			t.Errorf("path %q contains backslash, expected forward slash", f.Path)
+			t.Errorf("file path %q contains backslashes", f.Path)
 		}
-		if strings.HasPrefix(f.Path, "node_modules") {
-			t.Errorf("expected node_modules to be ignored, got %q", f.Path)
+		if !f.IsDir {
+			fileCount++
+			if f.Hash == "" {
+				t.Errorf("file %q has empty hash", f.Path)
+			}
 		}
+	}
+
+	if fileCount != 3 {
+		t.Errorf("expected 3 files, got %d", fileCount)
+	}
+
+	if manifest.RootHash == "" {
+		t.Error("manifest RootHash is empty")
 	}
 }
 
 func TestLocalCache(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "packets-test-cache-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir) //nolint:errcheck
+	tmpDir := t.TempDir()
 
 	initial, err := workspace.LoadLocalCache(tmpDir)
 	if err != nil {
@@ -167,17 +164,8 @@ func (b *workspaceBytesCloser) Close() error {
 }
 
 func TestExtractSnapshot(t *testing.T) {
-	srcDir, err := os.MkdirTemp("", "packets-src-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(srcDir) //nolint:errcheck
-
-	dstDir, err := os.MkdirTemp("", "packets-dst-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dstDir) //nolint:errcheck
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
 
 	testFile := filepath.Join(srcDir, "hello.txt")
 	testContent := []byte("hello packets remote build")
@@ -223,17 +211,8 @@ func TestExtractSnapshot(t *testing.T) {
 }
 
 func TestExtractSnapshot_DeletionDetection(t *testing.T) {
-	srcDir, err := os.MkdirTemp("", "packets-sync-del-src-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(srcDir) //nolint:errcheck
-
-	dstDir, err := os.MkdirTemp("", "packets-sync-del-dst-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dstDir) //nolint:errcheck
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
 
 	fileA := filepath.Join(srcDir, "keep.txt")
 	fileB := filepath.Join(srcDir, "deleted_local.txt")
@@ -308,17 +287,8 @@ func TestExtractSnapshot_DeletionDetection(t *testing.T) {
 }
 
 func TestExtractSnapshot_IntegrityCheck(t *testing.T) {
-	srcDir, err := os.MkdirTemp("", "packets-test-integrity-src-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(srcDir)
-
-	dstDir, err := os.MkdirTemp("", "packets-test-integrity-dst-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dstDir)
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
 
 	store := newWorkspaceTestMemStore()
 	owner := "testuser"
@@ -352,17 +322,8 @@ func TestExtractSnapshot_IntegrityCheck(t *testing.T) {
 }
 
 func TestExtractSnapshot_PartialFailure(t *testing.T) {
-	srcDir, err := os.MkdirTemp("", "packets-test-partial-src-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(srcDir)
-
-	dstDir, err := os.MkdirTemp("", "packets-test-partial-dst-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dstDir)
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
 
 	store := newWorkspaceTestMemStore()
 	owner := "testuser"

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -22,7 +23,7 @@ func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slo
 	if err != nil {
 		return err
 	}
-	defer conn.Close() //nolint:errcheck
+	defer func() { _ = conn.Close() }()
 
 	client := pb.NewSchedulerClient(conn)
 	stream, err := client.DownloadArtifact(ctx, &pb.DownloadArtifactRequest{JobId: jobID})
@@ -33,7 +34,7 @@ func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slo
 	var buf bytes.Buffer
 	for {
 		chunk, err := stream.Recv()
-		if err == io.EOF { //nolint:errorlint
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

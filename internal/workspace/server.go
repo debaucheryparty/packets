@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -120,7 +121,7 @@ func (s *Server) Snapshot(req *pb.DownloadRequest, stream pb.Workspace_SnapshotS
 	if err != nil {
 		return status.Errorf(codes.NotFound, "snapshot not found: %v", err)
 	}
-	defer r.Close() //nolint:errcheck
+	defer func() { _ = r.Close() }()
 
 	var manifest apitypes.WorkspaceManifest
 	if err := json.NewDecoder(r).Decode(&manifest); err != nil {
@@ -147,19 +148,19 @@ func (s *Server) Snapshot(req *pb.DownloadRequest, stream pb.Workspace_SnapshotS
 				Size: f.Size,
 				Mode: int64(f.Mode),
 			}); err != nil {
-				cr.Close() //nolint:errcheck
+				_ = cr.Close()
 				writeErr = err
 				break
 			}
 			if _, err := io.Copy(tw, cr); err != nil {
-				cr.Close() //nolint:errcheck
+				_ = cr.Close()
 				writeErr = err
 				break
 			}
-			cr.Close() //nolint:errcheck
+			_ = cr.Close()
 		}
-		tw.Close() //nolint:errcheck
-		gz.Close() //nolint:errcheck
+		_ = tw.Close()
+		_ = gz.Close()
 		pw.CloseWithError(writeErr)
 	}()
 
@@ -168,11 +169,11 @@ func (s *Server) Snapshot(req *pb.DownloadRequest, stream pb.Workspace_SnapshotS
 		n, err := pr.Read(buf)
 		if n > 0 {
 			if serr := stream.Send(&pb.WorkspaceChunk{Chunk: buf[:n]}); serr != nil {
-				pr.Close() //nolint:errcheck
+				_ = pr.Close()
 				return serr
 			}
 		}
-		if err == io.EOF { //nolint:errorlint
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -188,7 +189,7 @@ func (s *Server) ResolveManifest(ctx context.Context, owner, snapshotRef string)
 	if err != nil {
 		return nil, fmt.Errorf("ResolveManifest download: %w", err)
 	}
-	defer r.Close() //nolint:errcheck
+	defer func() { _ = r.Close() }()
 	var m apitypes.WorkspaceManifest
 	if err := json.NewDecoder(r).Decode(&m); err != nil {
 		return nil, fmt.Errorf("ResolveManifest decode: %w", err)

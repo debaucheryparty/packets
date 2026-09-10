@@ -39,11 +39,7 @@ func (m *mockSchedulerDownloadServer) DownloadArtifact(req *pb.DownloadArtifactR
 
 func TestGenerateCacheKey_DebugVsRelease(t *testing.T) {
 	ctx := context.Background()
-	tempDir, err := os.MkdirTemp("", "packets-hash-test-*")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	keyDebug, err := cli.GenerateCacheKey(ctx, cli.CacheKeyInputs{
 		ProjectID:   "proj-123",
@@ -76,13 +72,9 @@ func TestGenerateCacheKey_DebugVsRelease(t *testing.T) {
 	}
 }
 
-func TestGenerateCacheKey_ProjectIDSeparation(t *testing.T) {
+func TestGenerateCacheKey_DiffProjects(t *testing.T) {
 	ctx := context.Background()
-	tempDir, err := os.MkdirTemp("", "packets-hash-test-*")
-	if err != nil {
-		t.Fatalf("temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	keyProjA, err := cli.GenerateCacheKey(ctx, cli.CacheKeyInputs{
 		ProjectID:   "proj-A",
@@ -139,7 +131,7 @@ func TestPullAndExtractArtifact_TarGz(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterSchedulerServer(grpcServer, &mockSchedulerDownloadServer{payload: buf.Bytes()})
@@ -174,7 +166,7 @@ func TestPullAndExtractArtifact_RawBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterSchedulerServer(grpcServer, &mockSchedulerDownloadServer{payload: binaryContent})

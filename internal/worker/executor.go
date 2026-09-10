@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -288,7 +289,8 @@ func (e *Executor) executeHost(ctx context.Context, job apitypes.Job, srcDir str
 
 	exitCode := 0
 	if waitErr != nil {
-		if exitErr, ok := waitErr.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		} else {
 			exitCode = 1
@@ -323,10 +325,10 @@ func (e *Executor) collectArtifacts(ctx context.Context, srcDir string, paths []
 
 	key := fmt.Sprintf("%s/artifacts/%s/output.tar.gz", owner, jobID)
 	if err := e.store.Upload(ctx, key, pr, -1); err != nil {
-		pw.Close() //nolint:errcheck
+		_ = pw.Close()
 		return "", fmt.Errorf("collectArtifacts upload: %w", err)
 	}
-	pw.Close() //nolint:errcheck
+	_ = pw.Close()
 
 	return apitypes.ArtifactRef(key), nil
 }

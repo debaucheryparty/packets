@@ -1,10 +1,6 @@
 # packets
 
-A remote build execution and caching system designed specifically for developers using low-end laptops. It is:
-
-* **Fast**: packets' zero-cost abstractions and Git-aware caching give you instant build times if a teammate has already compiled a specific commit.
-* **Seamless**: packets hooks right into your normal workflow without you having to change how you work in your IDE or local terminal.
-* **Flexible**: packets has a minimal footprint and gracefully falls back to local execution or GitHub Actions naturally.
+A remote build execution and caching system designed specifically for developers using low-end laptops.
 
 [![Release][release-badge]][release-url]
 [![Build Status][actions-badge]][actions-url]

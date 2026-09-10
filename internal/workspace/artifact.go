@@ -44,9 +44,9 @@ func ExtractArtifact(data []byte, destDir, defaultFileName string) error {
 			outFile, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, zf.Mode())
 			if err == nil {
 				_, _ = io.Copy(outFile, rc)
-				outFile.Close()
+				_ = outFile.Close()
 			}
-			rc.Close()
+			_ = rc.Close()
 		}
 		return nil
 	}

@@ -30,8 +30,8 @@ func createTarGzPipe(srcDir string, paths []string) (io.Reader, io.Closer, error
 				break
 			}
 		}
-		tw.Close() //nolint:errcheck
-		gz.Close() //nolint:errcheck
+		_ = tw.Close()
+		_ = gz.Close()
 		pw.CloseWithError(werr)
 	}()
 	return pr, pw, nil
@@ -61,7 +61,7 @@ func addToTar(tw *tar.Writer, base, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close() //nolint:errcheck
+	defer func() { _ = f.Close() }()
 	if err := tw.WriteHeader(&tar.Header{
 		Name: rel,
 		Size: info.Size(),

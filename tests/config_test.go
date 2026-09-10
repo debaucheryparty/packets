@@ -45,7 +45,7 @@ func TestProfileLocalOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chdir(wd)
+	defer func() { _ = os.Chdir(wd) }()
 	if err := os.Chdir(tempDir); err != nil {
 		t.Fatal(err)
 	}

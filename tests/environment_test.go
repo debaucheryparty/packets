@@ -259,7 +259,7 @@ func setupTestGRPCServer(t *testing.T) (*environment.RemoteClient, func()) {
 		return lis.Dial()
 	}
 
-	conn, err := grpc.DialContext(
+	conn, err := grpc.DialContext( //nolint:staticcheck
 		context.Background(),
 		"passthrough://bufnet",
 		grpc.WithContextDialer(dialer),

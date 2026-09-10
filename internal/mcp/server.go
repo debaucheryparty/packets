@@ -389,7 +389,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		topo, err := s.envMgr.Detect(dir)
@@ -412,7 +412,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		topo, err := s.envMgr.Detect(dir)
@@ -437,7 +437,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		ref, err := workspace.UploadWorkspace(ctx, conn, dir, false)
@@ -452,7 +452,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		ref, err := workspace.UploadWorkspace(ctx, conn, dir, true)
@@ -481,7 +481,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		snapshotRef, err := workspace.UploadWorkspace(ctx, conn, dir, false)
@@ -577,7 +577,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		snapshotRef, err := workspace.UploadWorkspace(ctx, conn, dir, false)
@@ -673,7 +673,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		snapshotRef, err := workspace.UploadWorkspace(ctx, conn, dir, false)
@@ -759,7 +759,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		logCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -796,7 +796,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		client := pb.NewSchedulerClient(conn)
@@ -845,7 +845,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Connect to Packets daemon failed: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 
 		client := pb.NewSchedulerClient(conn)
@@ -885,7 +885,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Packets daemon is unreachable: " + err.Error())
 		}
 		if s.conn == nil {
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 		}
 		return textResult("✓ Packets scheduler daemon is active, healthy, and reachable via gRPC.")
 
@@ -1010,7 +1010,7 @@ func (s *Server) dialScheduler(ctx context.Context) (*grpc.ClientConn, error) {
 		opts = append(opts, grpc.WithPerRPCCredentials(mcpBearerTokenAuth{token: s.cfg.AuthToken}))
 	}
 
-	return grpc.DialContext(ctx, addr, opts...)
+	return grpc.DialContext(ctx, addr, opts...) //nolint:staticcheck
 }
 
 func textResult(text string) CallToolResult {

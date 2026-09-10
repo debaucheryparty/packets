@@ -35,7 +35,7 @@ func (s *testWorkspaceServer) Diff(ctx context.Context, req *pb.WorkspaceManifes
 	}, nil
 }
 
-func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*mcp.Server, *grpc.ClientConn, func()) {
+func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*mcp.Server, *grpc.ClientConn, func()) { //nolint:unparam
 	t.Helper()
 	lis := bufconn.Listen(1024 * 1024)
 	grpcServer := grpc.NewServer()
@@ -68,7 +68,7 @@ func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*mcp.Server, *gr
 		return lis.Dial()
 	}
 
-	conn, err := grpc.DialContext(
+	conn, err := grpc.DialContext( //nolint:staticcheck
 		context.Background(),
 		"passthrough://bufnet",
 		grpc.WithContextDialer(dialer),

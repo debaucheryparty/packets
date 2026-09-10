@@ -25,7 +25,7 @@ func NewAuthCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	return cmd
 }
 
-func newAuthLoginCommand(cfg *config.Config) *cobra.Command {
+func newAuthLoginCommand(_ *config.Config) *cobra.Command {
 	var (
 		serverFlag string
 		tokenFlag  string
@@ -103,7 +103,7 @@ func newAuthSetTokenCommand(_ *config.Config) *cobra.Command {
 	}
 }
 
-func newAuthStatusCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newAuthStatusCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Display active authentication and profile status",

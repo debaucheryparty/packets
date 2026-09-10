@@ -30,7 +30,7 @@ func NewEnvCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	return cmd
 }
 
-func newEnvDetectCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newEnvDetectCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "detect [dir]",
 		Short: "Detect project components and toolchains",
@@ -72,7 +72,7 @@ func newEnvDetectCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command
 	}
 }
 
-func newEnvCheckCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newEnvCheckCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 	var local bool
 
 	cmd := &cobra.Command{
@@ -104,7 +104,7 @@ func newEnvCheckCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command 
 				if err != nil {
 					return fmt.Errorf("connect to remote worker (use --local to check locally): %w", err)
 				}
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 
 				projectID := project.ResolveProjectID(dir)
 				remote := environment.NewRemoteClient(conn)
@@ -159,7 +159,7 @@ func newEnvCheckCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command 
 	return cmd
 }
 
-func newEnvPrepareCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newEnvPrepareCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 	var local bool
 
 	cmd := &cobra.Command{
@@ -189,7 +189,7 @@ func newEnvPrepareCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 			if err != nil {
 				return fmt.Errorf("connect to remote worker (use --local to prepare locally): %w", err)
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 
 			projectID := project.ResolveProjectID(dir)
 			remote := environment.NewRemoteClient(conn)
@@ -203,7 +203,7 @@ func newEnvPrepareCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 	return cmd
 }
 
-func newEnvSetCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newEnvSetCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
 	var dir string
 
 	cmd := &cobra.Command{
@@ -265,7 +265,7 @@ Supported types: android, zephyr, rust, go, node, python, cmake, java, swift, ru
 	return cmd
 }
 
-func newEnvRemoveCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newEnvRemoveCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
 	var dir string
 
 	cmd := &cobra.Command{
@@ -313,7 +313,7 @@ func newEnvRemoveCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command
 	return cmd
 }
 
-func newEnvResetCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newEnvResetCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:     "reset [dir]",
 		Aliases: []string{"clear"},

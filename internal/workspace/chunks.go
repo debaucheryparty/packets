@@ -45,7 +45,7 @@ func readChunkByHashReader(workspaceDir string, manifest *apitypes.WorkspaceMani
 	}
 	info, err := f.Stat()
 	if err != nil {
-		f.Close() //nolint:errcheck
+		_ = f.Close()
 		return nil, 0, err
 	}
 	return f, info.Size(), nil

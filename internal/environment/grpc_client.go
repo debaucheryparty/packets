@@ -2,6 +2,7 @@ package environment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -93,7 +94,7 @@ func (r *RemoteClient) Prepare(ctx context.Context, projectID, projectRoot strin
 
 	for {
 		line, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

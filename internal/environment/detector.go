@@ -49,10 +49,7 @@ func (d *Detector) DetectTopology(root string) (*ProjectTopology, error) {
 		return topology, nil
 	}
 
-	comps, err := d.detectInDir(absRoot, "")
-	if err != nil {
-		return nil, err
-	}
+	comps := d.detectInDir(absRoot, "")
 	topology.Components = append(topology.Components, comps...)
 
 	entries, err := os.ReadDir(absRoot)
@@ -66,8 +63,8 @@ func (d *Detector) DetectTopology(root string) (*ProjectTopology, error) {
 				continue
 			}
 			subDir := filepath.Join(absRoot, name)
-			subComps, err := d.detectInDir(subDir, name)
-			if err == nil && len(subComps) > 0 {
+			subComps := d.detectInDir(subDir, name)
+			if len(subComps) > 0 {
 				for _, sc := range subComps {
 					if !topologyHasComponent(topology.Components, sc) {
 						topology.Components = append(topology.Components, sc)
@@ -90,7 +87,7 @@ func topologyHasComponent(list []Component, c Component) bool {
 	return false
 }
 
-func (d *Detector) detectInDir(dir, relPath string) ([]Component, error) {
+func (d *Detector) detectInDir(dir, relPath string) []Component {
 	var comps []Component
 
 	androidComp := d.detectAndroid(dir, relPath)
@@ -164,7 +161,7 @@ func (d *Detector) detectInDir(dir, relPath string) ([]Component, error) {
 		}
 	}
 
-	return comps, nil
+	return comps
 }
 
 func (d *Detector) detectAndroid(dir, rel string) *Component {
@@ -620,7 +617,7 @@ func extractGradleVersion(propsPath string) string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	re := regexp.MustCompile(`gradle-([0-9]+\.[0-9]+(?:\.[0-9]+)?)-`)

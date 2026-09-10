@@ -210,10 +210,7 @@ func (p *PolicyEngine) RequiresApprovalFor(ec ExecutionContext) bool {
 		return false
 	}
 	cat := p.ClassifyCommand(ec.Command)
-	if cat == CategoryReadOnly {
-		return false
-	}
-	return true
+	return cat != CategoryReadOnly
 }
 
 func (p *PolicyEngine) CreatePendingApproval(ec ExecutionContext) (*PendingApproval, error) {
