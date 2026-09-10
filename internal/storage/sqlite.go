@@ -37,6 +37,10 @@ func NewJobStore(ctx context.Context, dbPath string) (*JobStore, error) {
 		return nil, fmt.Errorf("NewJobStore open %q: %w", dbPath, err)
 	}
 
+	_, _ = db.ExecContext(ctx, "PRAGMA journal_mode = WAL;")
+	_, _ = db.ExecContext(ctx, "PRAGMA busy_timeout = 5000;")
+	_, _ = db.ExecContext(ctx, "PRAGMA synchronous = NORMAL;")
+
 	if _, err := db.ExecContext(ctx, migration001); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("NewJobStore initial migration: %w", err)

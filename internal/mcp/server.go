@@ -628,12 +628,17 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			}
 		}
 
+		toolchainName := string(apitypes.ToolchainExec)
+		if tcArg, ok := params.Arguments["toolchain"].(string); ok && tcArg != "" {
+			toolchainName = tcArg
+		}
+
 		cacheKey := fmt.Sprintf("test:%s:%d", snapshotRef, time.Now().UnixNano())
 		client := pb.NewSchedulerClient(conn)
 		submitCtx := metadata.AppendToOutgoingContext(ctx, "x-approval-ticket", ticketID, "x-project-id", projectID)
 		resp, err := client.SubmitJob(submitCtx, &pb.SubmitJobRequest{
 			CacheKey:       cacheKey,
-			Toolchain:      string(apitypes.ToolchainExec),
+			Toolchain:      toolchainName,
 			Runner:         string(apitypes.RunnerHost),
 			SourceMode:     string(apitypes.SourceModeWorkspace),
 			SnapshotRef:    snapshotRef,
@@ -927,6 +932,7 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 	defer ticker.Stop()
 
 	timeout := time.After(60 * time.Second)
+	var streamEndTimer <-chan time.Time
 
 	for {
 		statusResp, err := client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: jobID})
@@ -952,6 +958,15 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 				return strings.Join(lines, "\n"), fmt.Errorf("job failed: %s", statusResp.ErrorMessage)
 			}
 		}
+
+		if streamEndTimer == nil {
+			select {
+			case <-logDone:
+				streamEndTimer = time.After(10 * time.Second)
+			default:
+			}
+		}
+
 		select {
 		case <-ctx.Done():
 			cancelStream()
@@ -962,6 +977,14 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 			mu.Lock()
 			defer mu.Unlock()
 			return strings.Join(lines, "\n"), ctx.Err()
+		case <-streamEndTimer:
+			cancelStream()
+			mu.Lock()
+			defer mu.Unlock()
+			if statusResp != nil && statusResp.State == pb.JobState_JOB_STATE_SUCCEEDED {
+				return strings.Join(lines, "\n"), nil
+			}
+			return strings.Join(lines, "\n"), fmt.Errorf("job %s finished execution but status update timed out", jobID)
 		case <-timeout:
 			cancelStream()
 			mu.Lock()

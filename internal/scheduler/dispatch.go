@@ -115,9 +115,6 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 			return
 		}
 		result, err := d.executor.Execute(ctx, job)
-		if d.logBroker != nil {
-			d.logBroker.CloseJob(job.ID)
-		}
 		if err != nil || result.ExitCode != 0 {
 			errMsg := ""
 			if err != nil {
@@ -153,9 +150,6 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 			return
 		}
 		result, err := d.executor.Execute(ctx, job)
-		if d.logBroker != nil {
-			d.logBroker.CloseJob(job.ID)
-		}
 		if err != nil || result.ExitCode != 0 {
 			errMsg := ""
 			if err != nil {
@@ -166,7 +160,9 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 			_ = d.store.FailJob(ctx, job.ID, errMsg)
 			return
 		}
-		_ = d.store.CompleteJob(ctx, job.ID, result.ArtifactRef, job.CacheKey)
+		if err := d.store.CompleteJob(ctx, job.ID, result.ArtifactRef, job.CacheKey); err != nil {
+			d.logger.ErrorContext(ctx, "CompleteJob failed", slog.String("job_id", string(job.ID)), slog.String("err", err.Error()))
+		}
 
 	default:
 		_ = d.store.FailJob(ctx, job.ID, fmt.Sprintf("unknown runner: %s", job.Runner))
