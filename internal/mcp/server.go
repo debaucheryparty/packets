@@ -938,20 +938,18 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 		statusResp, err := client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: jobID})
 		if err == nil {
 			if statusResp.State == pb.JobState_JOB_STATE_SUCCEEDED {
-				cancelStream()
 				select {
 				case <-logDone:
-				case <-time.After(1 * time.Second):
+				case <-time.After(3 * time.Second):
 				}
 				mu.Lock()
 				defer mu.Unlock()
 				return strings.Join(lines, "\n"), nil
 			}
 			if statusResp.State == pb.JobState_JOB_STATE_FAILED {
-				cancelStream()
 				select {
 				case <-logDone:
-				case <-time.After(1 * time.Second):
+				case <-time.After(3 * time.Second):
 				}
 				mu.Lock()
 				defer mu.Unlock()
