@@ -47,7 +47,7 @@ func (c *CircleCI) Dispatch(ctx context.Context, job apitypes.Job) (apitypes.Job
 	if err != nil {
 		return "", fmt.Errorf("CircleCI.Dispatch execute: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)

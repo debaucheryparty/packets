@@ -49,7 +49,7 @@ func NewExecCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("connect to scheduler: %w", err)
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 
 			var snapshotRef string
 			if !noSyncFlag {

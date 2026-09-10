@@ -41,9 +41,10 @@ func (g *GenericResolver) Check(ctx context.Context, comp Component) []Toolchain
 			checkTool("Python 3", "python3", "--version", "apt-get install -y python3 python3-pip python3-venv"),
 			checkTool("Pip", "pip3", "--version", "apt-get install -y python3-pip"),
 		}
-		if pm == "poetry" {
+		switch pm {
+		case "poetry":
 			reqs = append(reqs, checkTool("Poetry", "poetry", "--version", "pip3 install poetry"))
-		} else if pm == "pipenv" {
+		case "pipenv":
 			reqs = append(reqs, checkTool("Pipenv", "pipenv", "--version", "pip3 install pipenv"))
 		}
 		return reqs

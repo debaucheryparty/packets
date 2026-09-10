@@ -242,7 +242,7 @@ func (d *Detector) detectZephyr(dir, rel string) *Component {
 	hasPrjConf := fileExists(filepath.Join(dir, "prj.conf"))
 	hasCMake := fileExists(filepath.Join(dir, "CMakeLists.txt"))
 
-	if !hasWest && !(hasPrjConf && hasCMake) {
+	if !hasWest && (!hasPrjConf || !hasCMake) {
 		return nil
 	}
 

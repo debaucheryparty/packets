@@ -63,9 +63,10 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 					fmt.Printf("  [%s]\n", compType)
 					for _, req := range reqs {
 						status := "✓"
-						if req.Status == environment.StatusMissing {
+						switch req.Status {
+						case environment.StatusMissing:
 							status = "✗"
-						} else if req.Status == environment.StatusWarning {
+						case environment.StatusWarning:
 							status = "!"
 						}
 						fmt.Printf("    %s %-20s %s\n", status, req.Name, req.Status)
@@ -84,12 +85,7 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			}
 			fmt.Println()
 
-			fmt.Println("════════════════════════════════════════════════════════════════════════")
 			fmt.Println("✓ Packets Remote Development Mode is Ready!")
-			fmt.Println("  Remote Execution:   Active")
-			fmt.Println("  Persistent VPS:     Configured")
-			fmt.Println("  AI Agent Protocol:  MCP Ready (packets mcp)")
-			fmt.Println("════════════════════════════════════════════════════════════════════════")
 			return nil
 		},
 	}

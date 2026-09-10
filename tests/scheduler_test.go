@@ -108,7 +108,7 @@ func TestSubmitJob_ProjectIDPropagation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	t.Cleanup(func() { _ = store.Close() })
 
 	dispatcher := scheduler.NewDispatcher(slog.Default(), store, nil, nil, nil, scheduler.NewLogBroker())
 	srv := scheduler.NewServer(dispatcher, store, scheduler.NewLogBroker(), nil, nil)
@@ -139,7 +139,7 @@ func TestSubmitJob_EnforcesPolicyApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	t.Cleanup(func() { _ = store.Close() })
 
 	dispatcher := scheduler.NewDispatcher(slog.Default(), store, nil, nil, nil, scheduler.NewLogBroker())
 	srv := scheduler.NewServer(dispatcher, store, scheduler.NewLogBroker(), nil, nil)

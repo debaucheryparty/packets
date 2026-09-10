@@ -148,7 +148,7 @@ func newAuthStatusCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 				fmt.Printf("✗ Connection failed: %v\n", err)
 				return nil
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 			fmt.Println("✓ Successfully connected to Packets daemon!")
 			return nil
 		},

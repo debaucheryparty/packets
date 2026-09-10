@@ -112,10 +112,10 @@ func (c *environmentClient) Prepare(ctx context.Context, in *PrepareRequest, opt
 		return nil, err
 	}
 	x := &grpc.GenericClientStream[PrepareRequest, PrepareProgressLine]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
+	if err := x.SendMsg(in); err != nil {
 		return nil, err
 	}
-	if err := x.ClientStream.CloseSend(); err != nil {
+	if err := x.CloseSend(); err != nil {
 		return nil, err
 	}
 	return x, nil

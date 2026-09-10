@@ -767,7 +767,7 @@ func runBuildInstallLaunch(
 	} else {
 		fmt.Printf("Running Gradle (%s)...\n", gradleTask)
 		if err := pollJobStatus(ctx, cfg, client, resp.JobId, projectRoot, logger); err != nil {
-			return fmt.Errorf("Gradle build failed.\n\nJob: %s\nVariant: %s\n\nRemote output: check with `packets logs %s`\n\nError: %w",
+			return fmt.Errorf("gradle build failed (job: %s, variant: %s, remote output: `packets logs %s`): %w",
 				resp.JobId, variant, resp.JobId, err)
 		}
 		fmt.Println("✓ Build complete")

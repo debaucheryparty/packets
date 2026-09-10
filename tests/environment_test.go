@@ -15,11 +15,7 @@ import (
 )
 
 func TestDetector_PolyglotDetection(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "packets-polyglot-test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	androidDir := filepath.Join(tempDir, "android")
 	_ = os.MkdirAll(filepath.Join(androidDir, "app"), 0o755)
@@ -94,11 +90,7 @@ func TestDetector_PolyglotDetection(t *testing.T) {
 }
 
 func TestDetector_PythonVariants(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "packets-python-test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	_ = os.WriteFile(filepath.Join(tempDir, "requirements.txt"), []byte("fastapi\nuvicorn\n"), 0o644)
 
@@ -207,11 +199,7 @@ func TestDetector_AdditionalLanguages(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tempDir, err := os.MkdirTemp("", "packets-lang-test-*")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.RemoveAll(tempDir)
+			tempDir := t.TempDir()
 
 			for p, content := range tc.files {
 				target := filepath.Join(tempDir, p)

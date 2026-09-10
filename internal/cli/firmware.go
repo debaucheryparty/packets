@@ -69,7 +69,7 @@ func newFirmwareBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Com
 			if err != nil {
 				return fmt.Errorf("connect to scheduler: %w", err)
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 
 			fmt.Println("Uploading workspace to remote persistent node...")
 			uploadStart := time.Now()

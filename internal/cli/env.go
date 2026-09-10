@@ -129,9 +129,10 @@ func newEnvCheckCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 				fmt.Printf("Component: %s\n", compType)
 				for _, req := range reqs {
 					statusSymbol := "✓"
-					if req.Status == environment.StatusMissing {
+					switch req.Status {
+					case environment.StatusMissing:
 						statusSymbol = "✗"
-					} else if req.Status == environment.StatusWarning {
+					case environment.StatusWarning:
 						statusSymbol = "!"
 					}
 
