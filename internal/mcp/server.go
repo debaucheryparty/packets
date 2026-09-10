@@ -934,14 +934,33 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 	timeout := time.After(60 * time.Second)
 	var streamEndTimer <-chan time.Time
 
+	drainLogs := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if len(lines) == 0 {
+			logCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			if s, err := client.StreamJobLogs(logCtx, &pb.StreamJobLogsRequest{JobId: jobID}); err == nil {
+				for {
+					l, err := s.Recv()
+					if err != nil {
+						break
+					}
+					lines = append(lines, l.Content)
+				}
+			}
+		}
+	}
+
 	for {
 		statusResp, err := client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: jobID})
 		if err == nil {
 			if statusResp.State == pb.JobState_JOB_STATE_SUCCEEDED {
 				select {
 				case <-logDone:
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 				}
+				drainLogs()
 				mu.Lock()
 				defer mu.Unlock()
 				return strings.Join(lines, "\n"), nil
@@ -949,8 +968,9 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 			if statusResp.State == pb.JobState_JOB_STATE_FAILED {
 				select {
 				case <-logDone:
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 				}
+				drainLogs()
 				mu.Lock()
 				defer mu.Unlock()
 				return strings.Join(lines, "\n"), fmt.Errorf("job failed: %s", statusResp.ErrorMessage)
@@ -972,11 +992,13 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 			case <-logDone:
 			case <-time.After(1 * time.Second):
 			}
+			drainLogs()
 			mu.Lock()
 			defer mu.Unlock()
 			return strings.Join(lines, "\n"), ctx.Err()
 		case <-streamEndTimer:
 			cancelStream()
+			drainLogs()
 			mu.Lock()
 			defer mu.Unlock()
 			if statusResp != nil && statusResp.State == pb.JobState_JOB_STATE_SUCCEEDED {
@@ -985,6 +1007,7 @@ func (s *Server) collectJobLogs(ctx context.Context, client pb.SchedulerClient, 
 			return strings.Join(lines, "\n"), fmt.Errorf("job %s finished execution but status update timed out", jobID)
 		case <-timeout:
 			cancelStream()
+			drainLogs()
 			mu.Lock()
 			defer mu.Unlock()
 			return strings.Join(lines, "\n"), fmt.Errorf("job %s timed out waiting for completion", jobID)
