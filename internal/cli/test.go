@@ -110,7 +110,7 @@ Streams test execution logs and reports exit code.`,
 			logger.InfoContext(ctx, "test job submitted", slog.String("job_id", resp.JobId))
 
 			if waitFlag {
-				return streamAndWatchJob(ctx, client, resp.JobId, logger)
+				return streamAndWatchJob(ctx, client, resp.JobId)
 			}
 
 			fmt.Printf("✓ Test job %s submitted. Run 'packets logs %s' to stream output.\n", resp.JobId, resp.JobId)
@@ -130,7 +130,7 @@ func stringsHasDashPrefix(s string) bool {
 	return len(s) > 0 && s[0] == '-'
 }
 
-func streamAndWatchJob(ctx context.Context, client pb.SchedulerClient, jobID string, logger *slog.Logger) error {
+func streamAndWatchJob(ctx context.Context, client pb.SchedulerClient, jobID string) error {
 	streamCtx, cancelStream := context.WithCancel(ctx)
 	defer cancelStream()
 

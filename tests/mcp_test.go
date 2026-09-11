@@ -35,7 +35,7 @@ func (s *testWorkspaceServer) Diff(ctx context.Context, req *pb.WorkspaceManifes
 	}, nil
 }
 
-func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*mcp.Server, *grpc.ClientConn, func()) { //nolint:unparam
+func setupMCPTestServer(t *testing.T, pe *policy.PolicyEngine) (*mcp.Server, *grpc.ClientConn, func()) {
 	t.Helper()
 	lis := bufconn.Listen(1024 * 1024)
 	grpcServer := grpc.NewServer()

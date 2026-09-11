@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -28,7 +29,7 @@ func TestRealNetwork_TCPGRPC_Lifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to listen on TCP: %v", err)
 	}
-	defer lis.Close()
+	defer func() { _ = lis.Close() }()
 
 	port := lis.Addr().(*net.TCPAddr).Port
 	tmpDir := t.TempDir()
@@ -37,7 +38,7 @@ func TestRealNetwork_TCPGRPC_Lifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewJobStore: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	logBroker := scheduler.NewLogBroker()
 	exec := worker.NewExecutor(slog.Default(), nil, nil, toolchain.NewRegistry(), logBroker, tmpDir)
@@ -54,11 +55,11 @@ func TestRealNetwork_TCPGRPC_Lifecycle(t *testing.T) {
 	defer grpcServer.Stop()
 
 	targetAddr := fmt.Sprintf("127.0.0.1:%d", port)
-	conn, err := grpc.Dial(targetAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(targetAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("failed to dial real TCP target: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := pb.NewSchedulerClient(conn)
 
@@ -89,7 +90,7 @@ func TestRealNetwork_TCPGRPC_Lifecycle(t *testing.T) {
 	var logsReceived []string
 	for {
 		line, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -128,11 +129,11 @@ func TestRealNetwork_RemoteVPS_Integration(t *testing.T) {
 		t.Skip("PACKETS_TEST_VPS_ADDR not set; external VPS real-network test marked NOT RUN")
 	}
 
-	conn, err := grpc.Dial(vpsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(vpsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatalf("dial VPS %s failed: %v", vpsAddr, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := pb.NewSchedulerClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
