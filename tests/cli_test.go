@@ -193,3 +193,53 @@ func TestPullAndExtractArtifact_RawBinary(t *testing.T) {
 		t.Errorf("expected %v, got %v", binaryContent, data)
 	}
 }
+
+func TestCLI_InitCommand(t *testing.T) {
+	tempDir := t.TempDir()
+
+	initCmd := cli.NewInitCommand(nil, slog.Default())
+	initCmd.SetArgs([]string{tempDir, "--id", "custom-proj-id"})
+
+	if err := initCmd.Execute(); err != nil {
+		t.Fatalf("packets init failed: %v", err)
+	}
+
+	cfgFile := filepath.Join(tempDir, ".packets", "project.json")
+	if _, err := os.Stat(cfgFile); err != nil {
+		t.Fatalf("expected project.json to exist at %s", cfgFile)
+	}
+
+	data, err := os.ReadFile(cfgFile)
+	if err != nil {
+		t.Fatalf("read project.json: %v", err)
+	}
+	if !bytes.Contains(data, []byte("custom-proj-id")) {
+		t.Errorf("expected custom-proj-id in project.json, got: %s", string(data))
+	}
+}
+
+func TestCLI_StatusCommand(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = lis.Close() }()
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterSchedulerServer(grpcServer, &mockSchedulerDownloadServer{})
+	go func() { _ = grpcServer.Serve(lis) }()
+	defer grpcServer.Stop()
+
+	port := lis.Addr().(*net.TCPAddr).Port
+	cfg := &config.Config{
+		SchedulerGRPCPort: fmt.Sprintf("%d", port),
+	}
+
+	statusCmd := cli.NewStatusCommand(cfg, slog.Default())
+	statusCmd.SetArgs([]string{})
+
+	if err := statusCmd.Execute(); err != nil {
+		t.Fatalf("packets status (daemon check) failed: %v", err)
+	}
+}
+

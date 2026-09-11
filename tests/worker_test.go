@@ -154,3 +154,46 @@ func TestExecutor_CancellationKillsProcess(t *testing.T) {
 		t.Errorf("expected non-zero exit code on cancellation, got %d", res.ExitCode)
 	}
 }
+
+func TestExecutor_PathTraversalPrevention(t *testing.T) {
+	tempDir := t.TempDir()
+	wsDir := filepath.Join(tempDir, "workspaces")
+	exec := worker.NewExecutor(nil, nil, nil, toolchain.NewRegistry(), nil, tempDir)
+	exec.SetWorkspaceDir(wsDir)
+
+	ctx := context.Background()
+	traversalJob := apitypes.Job{
+		ID:          "job-traversal",
+		ProjectID:   "../../outside",
+		Runner:      apitypes.RunnerHost,
+		SourceMode:  apitypes.SourceModeWorkspace,
+		Owner:       "test-user",
+		CommandArgs: []string{"echo", "escaped"},
+	}
+
+	_, err := exec.Execute(ctx, traversalJob)
+	if err == nil {
+		t.Fatalf("expected path traversal in ProjectID to be rejected, but got nil error")
+	}
+	if !strings.Contains(err.Error(), "workspace escape detected") {
+		t.Errorf("expected workspace escape detected error, got: %v", err)
+	}
+
+	traversalOwnerJob := apitypes.Job{
+		ID:          "job-traversal-owner",
+		ProjectID:   "my-proj",
+		Runner:      apitypes.RunnerHost,
+		SourceMode:  apitypes.SourceModeWorkspace,
+		Owner:       "../../../root",
+		CommandArgs: []string{"echo", "escaped"},
+	}
+
+	_, err = exec.Execute(ctx, traversalOwnerJob)
+	if err == nil {
+		t.Fatalf("expected path traversal in Owner to be rejected, but got nil error")
+	}
+	if !strings.Contains(err.Error(), "workspace escape detected") {
+		t.Errorf("expected workspace escape detected error, got: %v", err)
+	}
+}
+

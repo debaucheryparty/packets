@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -85,7 +86,11 @@ func (e *Executor) Execute(ctx context.Context, job apitypes.Job) (apitypes.Exec
 		if projID == "" {
 			projID = "default"
 		}
-		srcDir = filepath.Join(e.workspaceDir, owner, projID)
+		srcDir = filepath.Clean(filepath.Join(e.workspaceDir, owner, projID))
+		rel, err := filepath.Rel(e.workspaceDir, srcDir)
+		if err != nil || strings.HasPrefix(rel, "..") || rel == "." {
+			return apitypes.ExecutionResult{}, fmt.Errorf("invalid owner or project ID: workspace escape detected")
+		}
 		if err := os.MkdirAll(srcDir, 0o755); err != nil {
 			return apitypes.ExecutionResult{}, fmt.Errorf("Executor.Execute mkdir persistent workspace: %w", err)
 		}

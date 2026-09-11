@@ -358,3 +358,128 @@ func TestExtractSnapshot_PartialFailure(t *testing.T) {
 		t.Error("manifest marker must not be written after a partial extraction failure")
 	}
 }
+
+func TestWorkspaceSync_DeterministicHashing(t *testing.T) {
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+
+	_ = os.WriteFile(filepath.Join(dirA, "main.go"), []byte("package main"), 0o644)
+	_ = os.MkdirAll(filepath.Join(dirA, "pkg"), 0o755)
+	_ = os.WriteFile(filepath.Join(dirA, "pkg", "lib.go"), []byte("package pkg"), 0o644)
+
+	_ = os.WriteFile(filepath.Join(dirB, "main.go"), []byte("package main"), 0o644)
+	_ = os.MkdirAll(filepath.Join(dirB, "pkg"), 0o755)
+	_ = os.WriteFile(filepath.Join(dirB, "pkg", "lib.go"), []byte("package pkg"), 0o644)
+
+	mA, errA := workspace.ScanWorkspace(dirA, nil)
+	if errA != nil {
+		t.Fatal(errA)
+	}
+	mB, errB := workspace.ScanWorkspace(dirB, nil)
+	if errB != nil {
+		t.Fatal(errB)
+	}
+
+	if mA.RootHash != mB.RootHash {
+		t.Errorf("expected deterministic RootHash, got mA=%s mB=%s", mA.RootHash, mB.RootHash)
+	}
+
+	_ = os.WriteFile(filepath.Join(dirB, "pkg", "lib.go"), []byte("package pkg\n// changed"), 0o644)
+	mB2, _ := workspace.ScanWorkspace(dirB, nil)
+	if mA.RootHash == mB2.RootHash {
+		t.Errorf("expected RootHash to change when file content changes")
+	}
+}
+
+func TestWorkspaceSync_LifecycleModifications(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	store := newWorkspaceTestMemStore()
+	owner := "testuser"
+
+	syncSrcToDst := func() string {
+		m, err := workspace.ScanWorkspace(srcDir, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range m.Files {
+			if !f.IsDir && f.Hash != "" {
+				d, rErr := workspace.ReadChunkByHash(srcDir, m, f.Hash)
+				if rErr != nil {
+					t.Fatal(rErr)
+				}
+				store.data["testuser/chunks/"+f.Hash] = d
+			}
+		}
+		mBytes, _ := json.Marshal(m)
+		store.data["testuser/manifests/"+m.RootHash+".json"] = mBytes
+		if err := workspace.ExtractSnapshot(context.Background(), store, owner, m.RootHash, dstDir); err != nil {
+			t.Fatal(err)
+		}
+		return m.RootHash
+	}
+
+	f1 := filepath.Join(srcDir, "file1.txt")
+	_ = os.WriteFile(f1, []byte("version 1"), 0o644)
+	_ = os.MkdirAll(filepath.Join(srcDir, "sub"), 0o755)
+	f2 := filepath.Join(srcDir, "sub", "file2.txt")
+	_ = os.WriteFile(f2, []byte("nested file"), 0o644)
+
+	largeData := make([]byte, 1024*1024)
+	for i := range largeData {
+		largeData[i] = byte(i % 256)
+	}
+	fLarge := filepath.Join(srcDir, "large.bin")
+	_ = os.WriteFile(fLarge, largeData, 0o644)
+
+	hash1 := syncSrcToDst()
+	if _, err := os.Stat(filepath.Join(dstDir, "file1.txt")); err != nil {
+		t.Fatalf("file1.txt missing after initial sync: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "large.bin")); err != nil {
+		t.Fatalf("large.bin missing after initial sync: %v", err)
+	}
+
+	_ = os.WriteFile(f1, []byte("version 2 modified"), 0o644)
+	hash2 := syncSrcToDst()
+	if hash1 == hash2 {
+		t.Errorf("hash should change on modification")
+	}
+	gotMod, _ := os.ReadFile(filepath.Join(dstDir, "file1.txt"))
+	if string(gotMod) != "version 2 modified" {
+		t.Errorf("modified content mismatch: got %q", string(gotMod))
+	}
+
+	f3 := filepath.Join(srcDir, "new_file.txt")
+	_ = os.WriteFile(f3, []byte("brand new"), 0o644)
+	syncSrcToDst()
+	if _, err := os.Stat(filepath.Join(dstDir, "new_file.txt")); err != nil {
+		t.Errorf("new_file.txt missing after new file sync")
+	}
+
+	_ = os.Remove(f2)
+	syncSrcToDst()
+	if _, err := os.Stat(filepath.Join(dstDir, "sub", "file2.txt")); !os.IsNotExist(err) {
+		t.Errorf("deleted nested file should be removed in dstDir")
+	}
+
+	_ = os.WriteFile(f1, []byte("version 1"), 0o644)
+	hashReverted := syncSrcToDst()
+	gotReverted, _ := os.ReadFile(filepath.Join(dstDir, "file1.txt"))
+	if string(gotReverted) != "version 1" {
+		t.Errorf("reverted content mismatch: got %q", string(gotReverted))
+	}
+	_ = hashReverted
+
+	_ = os.Remove(f3)
+	fRenamed := filepath.Join(srcDir, "renamed_file.txt")
+	_ = os.WriteFile(fRenamed, []byte("brand new"), 0o644)
+	syncSrcToDst()
+	if _, err := os.Stat(filepath.Join(dstDir, "new_file.txt")); !os.IsNotExist(err) {
+		t.Errorf("old file name still exists after rename")
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "renamed_file.txt")); err != nil {
+		t.Errorf("renamed file missing in dstDir")
+	}
+}
+

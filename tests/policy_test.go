@@ -99,12 +99,32 @@ func TestPolicyEngine_ApprovalWorkflowAndBinding(t *testing.T) {
 		t.Errorf("expected ticket bound to snap-aaa to fail for snap-tampered")
 	}
 
-	req3, _ := engine.CreatePendingApproval(baseCtx)
-	ticket3, _ := engine.ApprovePending(req3.ID)
-	tamperedCmdCtx := baseCtx
-	tamperedCmdCtx.Command = "rm -rf /"
-	if err := engine.ValidateAndConsumeTicket(ticket3.ID, tamperedCmdCtx); err == nil {
-		t.Errorf("expected ticket bound to command to fail for tampered command")
+	req4, _ := engine.CreatePendingApproval(baseCtx)
+	ticket4, _ := engine.ApprovePending(req4.ID)
+	tamperedArgsCtx := baseCtx
+	tamperedArgsCtx.Args = []string{"assembleDebug", "--evil"}
+	if err := engine.ValidateAndConsumeTicket(ticket4.ID, tamperedArgsCtx); err == nil {
+		t.Errorf("expected ticket bound to args to fail for tampered args")
+	}
+
+	req5, _ := engine.CreatePendingApproval(baseCtx)
+	ticket5, _ := engine.ApprovePending(req5.ID)
+	tamperedProjCtx := baseCtx
+	tamperedProjCtx.ProjectID = "proj-other"
+	if err := engine.ValidateAndConsumeTicket(ticket5.ID, tamperedProjCtx); err == nil {
+		t.Errorf("expected ticket bound to project to fail for tampered project")
+	}
+
+	req6, _ := engine.CreatePendingApproval(baseCtx)
+	ticket6, _ := engine.ApprovePending(req6.ID)
+	tamperedWsCtx := baseCtx
+	tamperedWsCtx.WorkspaceID = "ws-other"
+	if err := engine.ValidateAndConsumeTicket(ticket6.ID, tamperedWsCtx); err == nil {
+		t.Errorf("expected ticket bound to workspace to fail for tampered workspace")
+	}
+
+	if err := engine.ValidateAndConsumeTicket("forged_ticket_12345", baseCtx); err == nil {
+		t.Errorf("expected forged ticket to fail validation")
 	}
 }
 

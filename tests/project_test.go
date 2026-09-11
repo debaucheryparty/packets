@@ -77,3 +77,146 @@ func TestConfig_SaveAndLoad(t *testing.T) {
 		t.Errorf("unexpected components: %+v", loaded.Components)
 	}
 }
+
+func TestBuildGraph_TopologicalOrderingAndCycles(t *testing.T) {
+	cfg := &project.Config{
+		ProjectID: "hybrid-app",
+		Components: []project.ComponentConfig{
+			{
+				Name:         "android-client",
+				Type:         "android",
+				Path:         "app",
+				DependsOn:    []string{"rust-core"},
+				BuildCommand: "./gradlew assembleDebug",
+			},
+			{
+				Name:         "rust-core",
+				Type:         "rust",
+				Path:         "native",
+				BuildCommand: "cargo build --release",
+			},
+			{
+				Name:         "docs",
+				Type:         "generic",
+				Path:         "docs",
+				BuildCommand: "mdbook build",
+			},
+		},
+	}
+
+	graph, err := project.NewBuildGraph(cfg)
+	if err != nil {
+		t.Fatalf("NewBuildGraph failed: %v", err)
+	}
+
+	order, err := graph.BuildOrder()
+	if err != nil {
+		t.Fatalf("BuildOrder failed: %v", err)
+	}
+
+	if len(order) != 3 {
+		t.Fatalf("expected 3 components in build order, got %d", len(order))
+	}
+
+	rustIdx := -1
+	androidIdx := -1
+	for idx, c := range order {
+		if c.Name == "rust-core" {
+			rustIdx = idx
+		}
+		if c.Name == "android-client" {
+			androidIdx = idx
+		}
+	}
+	if rustIdx == -1 || androidIdx == -1 || rustIdx > androidIdx {
+		t.Errorf("expected rust-core before android-client, got rust=%d android=%d", rustIdx, androidIdx)
+	}
+
+	partialOrder, err := graph.BuildOrderFor("android-client")
+	if err != nil {
+		t.Fatalf("BuildOrderFor failed: %v", err)
+	}
+	if len(partialOrder) != 2 {
+		t.Fatalf("expected 2 components for android-client partial build, got %d", len(partialOrder))
+	}
+	if partialOrder[0].Name != "rust-core" || partialOrder[1].Name != "android-client" {
+		t.Errorf("unexpected partial build order: %+v", partialOrder)
+	}
+
+	cyclicCfg := &project.Config{
+		ProjectID: "cycle-app",
+		Components: []project.ComponentConfig{
+			{
+				Name:      "comp-a",
+				Type:      "go",
+				DependsOn: []string{"comp-b"},
+			},
+			{
+				Name:      "comp-b",
+				Type:      "rust",
+				DependsOn: []string{"comp-a"},
+			},
+		},
+	}
+	_, err = project.NewBuildGraph(cyclicCfg)
+	if err == nil {
+		t.Fatalf("expected cycle detection error for cyclic graph, got nil")
+	}
+
+	unknownDepCfg := &project.Config{
+		ProjectID: "unknown-dep-app",
+		Components: []project.ComponentConfig{
+			{
+				Name:      "client",
+				Type:      "node",
+				DependsOn: []string{"non-existent"},
+			},
+		},
+	}
+	_, err = project.NewBuildGraph(unknownDepCfg)
+	if err == nil {
+		t.Fatalf("expected error for unknown dependency, got nil")
+	}
+}
+
+func TestBuildGraph_ArtifactRouting(t *testing.T) {
+	root := t.TempDir()
+
+	rustOutDir := filepath.Join(root, "native", "target", "release")
+	_ = os.MkdirAll(rustOutDir, 0o755)
+	soPath := filepath.Join(rustOutDir, "libcore.so")
+	_ = os.WriteFile(soPath, []byte("\x7fELFfake-shared-object"), 0o755)
+
+	comp := project.ComponentConfig{
+		Name: "rust-core",
+		Type: "rust",
+		Path: "native",
+		ArtifactRouting: map[string]string{
+			"target/release/libcore.so": "app/src/main/jniLibs/arm64-v8a/libcore.so",
+		},
+	}
+
+	cfg := &project.Config{
+		ProjectID:  "hybrid-app",
+		Components: []project.ComponentConfig{comp},
+	}
+
+	graph, err := project.NewBuildGraph(cfg)
+	if err != nil {
+		t.Fatalf("NewBuildGraph failed: %v", err)
+	}
+
+	if err := graph.RouteArtifacts(root, comp); err != nil {
+		t.Fatalf("RouteArtifacts failed: %v", err)
+	}
+
+	routedFile := filepath.Join(root, "app", "src", "main", "jniLibs", "arm64-v8a", "libcore.so")
+	content, err := os.ReadFile(routedFile)
+	if err != nil {
+		t.Fatalf("reading routed artifact: %v", err)
+	}
+	if string(content) != "\x7fELFfake-shared-object" {
+		t.Errorf("routed content mismatch: got %q", string(content))
+	}
+}
+

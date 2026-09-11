@@ -35,7 +35,9 @@ func main() {
 	}
 
 	rootCmd.AddCommand(
+		cli.NewInitCommand(cfg, logger),
 		cli.NewBuildCommand(cfg, logger),
+		cli.NewTestCommand(cfg, logger),
 		cli.NewExecCommand(cfg, logger),
 		cli.NewSyncCommand(cfg, logger),
 		cli.NewEnvCommand(cfg, logger),

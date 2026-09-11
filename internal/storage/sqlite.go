@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/debaucheryparty/packets/pkg/apitypes"
@@ -28,13 +30,21 @@ var (
 )
 
 type JobStore struct {
-	db *sql.DB
+	db      *sql.DB
+	writeMu sync.Mutex
 }
 
 func NewJobStore(ctx context.Context, dbPath string) (*JobStore, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("NewJobStore open %q: %w", dbPath, err)
+	}
+
+	if dbPath == ":memory:" || strings.Contains(dbPath, "mode=memory") {
+		db.SetMaxOpenConns(1)
+	} else {
+		db.SetMaxOpenConns(25)
+		db.SetMaxIdleConns(10)
 	}
 
 	_, _ = db.ExecContext(ctx, "PRAGMA journal_mode = WAL;")
@@ -59,6 +69,9 @@ func (s *JobStore) Close() error {
 }
 
 func (s *JobStore) CreateJob(ctx context.Context, job apitypes.Job) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	cmdArgs, _ := json.Marshal(job.CommandArgs)
 	artifactPaths, _ := json.Marshal(job.ArtifactPaths)
 
@@ -90,6 +103,9 @@ func (s *JobStore) GetJob(ctx context.Context, id apitypes.JobID) (apitypes.Job,
 }
 
 func (s *JobStore) UpdateJobState(ctx context.Context, id apitypes.JobID, state apitypes.JobState) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	var completedAt *time.Time
 	if state.IsTerminal() {
 		now := time.Now().UTC()
@@ -111,6 +127,9 @@ func (s *JobStore) UpdateJobState(ctx context.Context, id apitypes.JobID, state 
 }
 
 func (s *JobStore) CompleteJob(ctx context.Context, id apitypes.JobID, ref apitypes.ArtifactRef, cacheKey string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	now := time.Now().UTC()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -136,6 +155,9 @@ func (s *JobStore) CompleteJob(ctx context.Context, id apitypes.JobID, ref apity
 }
 
 func (s *JobStore) FailJob(ctx context.Context, id apitypes.JobID, errMsg string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE jobs SET state = ?, completed_at = ?, error = ? WHERE id = ?`,
@@ -237,6 +259,9 @@ func (s *JobStore) Lookup(ctx context.Context, key string) (apitypes.ArtifactRef
 }
 
 func (s *JobStore) Store(ctx context.Context, key string, artifact apitypes.ArtifactRef) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	_, err := s.db.ExecContext(ctx,
 		`INSERT OR REPLACE INTO cache_entries (cache_key, artifact_ref, created_at) VALUES (?, ?, ?)`,
 		key, string(artifact), time.Now().UTC(),
@@ -248,6 +273,9 @@ func (s *JobStore) Store(ctx context.Context, key string, artifact apitypes.Arti
 }
 
 func (s *JobStore) DeleteCacheEntries(ctx context.Context, toolchain string) (int, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	var res sql.Result
 	var err error
 	if toolchain == "" {
@@ -265,6 +293,9 @@ func (s *JobStore) DeleteCacheEntries(ctx context.Context, toolchain string) (in
 }
 
 func (s *JobStore) SetJobArtifact(ctx context.Context, id apitypes.JobID, ref apitypes.ArtifactRef) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE jobs SET artifact_ref = ? WHERE id = ?`,
 		string(ref), string(id),

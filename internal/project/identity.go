@@ -11,10 +11,14 @@ import (
 )
 
 type ComponentConfig struct {
-	Type     string            `json:"type"`
-	Name     string            `json:"name,omitempty"`
-	Path     string            `json:"path,omitempty"`
-	Metadata map[string]string `json:"metadata,omitempty"`
+	Type            string            `json:"type"`
+	Name            string            `json:"name,omitempty"`
+	Path            string            `json:"path,omitempty"`
+	DependsOn       []string          `json:"depends_on,omitempty"`
+	BuildCommand    string            `json:"build_command,omitempty"`
+	ArtifactPaths   []string          `json:"artifact_paths,omitempty"`
+	ArtifactRouting map[string]string `json:"artifact_routing,omitempty"`
+	Metadata        map[string]string `json:"metadata,omitempty"`
 }
 
 type Config struct {

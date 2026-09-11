@@ -401,3 +401,41 @@ func TestMCPServer_ProgressNotification(t *testing.T) {
 		t.Errorf("expected message, got %s", notif.Params.Message)
 	}
 }
+
+func TestMCPServer_DirectGRPCBypassRejection(t *testing.T) {
+	pe := policy.NewPolicyEngine(policy.ApprovalAlways)
+	_, conn, cleanup := setupMCPTestServer(t, pe)
+	defer cleanup()
+
+	client := pb.NewSchedulerClient(conn)
+
+	reqDirect := &pb.SubmitJobRequest{
+		CacheKey:    "test-cache-key-direct",
+		Toolchain:   "exec",
+		CommandArgs: []string{"./deploy.sh", "bypass-attempt"},
+		ProjectId:   "proj-direct",
+		SnapshotRef: "snap-direct",
+	}
+
+	_, err := client.SubmitJob(context.Background(), reqDirect)
+	if err == nil {
+		t.Fatalf("expected direct gRPC submit without approval ticket to be rejected by scheduler policy")
+	}
+	if !strings.Contains(err.Error(), "policy rejection") {
+		t.Errorf("expected policy rejection error, got: %v", err)
+	}
+
+	reqForged := &pb.SubmitJobRequest{
+		CacheKey:       "test-cache-key-forged",
+		Toolchain:      "exec",
+		CommandArgs:    []string{"./deploy.sh", "forged-attempt"},
+		ProjectId:      "proj-direct",
+		SnapshotRef:    "snap-direct",
+		ApprovalTicket: "ticket_forged_9999",
+	}
+	_, err = client.SubmitJob(context.Background(), reqForged)
+	if err == nil {
+		t.Fatalf("expected direct gRPC submit with forged ticket to be rejected")
+	}
+}
+
