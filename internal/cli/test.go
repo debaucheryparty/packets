@@ -113,7 +113,7 @@ Streams test execution logs and reports exit code.`,
 				return streamAndWatchJob(ctx, client, resp.JobId)
 			}
 
-			fmt.Printf("✓ Test job %s submitted. Run 'packets logs %s' to stream output.\n", resp.JobId, resp.JobId)
+			fmt.Printf("packets :: test queued [%s] (stream with 'packets logs %s')\n", resp.JobId, resp.JobId)
 			return nil
 		},
 	}
@@ -162,7 +162,7 @@ func streamAndWatchJob(ctx context.Context, client pb.SchedulerClient, jobID str
 			if statusResp.State == pb.JobState_JOB_STATE_SUCCEEDED {
 				cancelStream()
 				time.Sleep(100 * time.Millisecond)
-				fmt.Printf("\n✓ Tests PASSED (job: %s)\n", jobID)
+				fmt.Printf("\npackets :: tests passed [%s]\n", jobID)
 				return nil
 			}
 			if statusResp.State == pb.JobState_JOB_STATE_FAILED {
@@ -172,7 +172,7 @@ func streamAndWatchJob(ctx context.Context, client pb.SchedulerClient, jobID str
 				if errMsg == "" {
 					errMsg = "tests failed"
 				}
-				return fmt.Errorf("✗ Tests FAILED (job: %s): %s", jobID, errMsg)
+				return fmt.Errorf("packets :: tests failed [%s]: %s", jobID, errMsg)
 			}
 		}
 	}

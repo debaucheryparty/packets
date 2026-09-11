@@ -111,10 +111,7 @@ Supports incremental chunk synchronization and full synchronization with deletio
 			}
 
 			duration := time.Since(start).Round(time.Millisecond)
-			fmt.Println("✓ Workspace synchronized successfully!")
-			fmt.Printf("  Snapshot Ref: %s\n", snapshotRef)
-			fmt.Printf("  Files:        %d\n", fileCount)
-			fmt.Printf("  Duration:     %s\n", duration)
+			fmt.Printf("packets :: workspace synced [%s, %d files, %s]\n", snapshotRef[:12], fileCount, duration)
 
 			return nil
 		},

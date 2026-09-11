@@ -24,9 +24,8 @@ func NewStatusCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			defer func() { _ = conn.Close() }()
 
 			if len(args) == 0 {
-				fmt.Printf("✓ Packets scheduler daemon is active, healthy, and reachable via gRPC.\n")
-				fmt.Printf("  Address: %s\n", cfg.SchedulerAddr())
-				fmt.Printf("  Use 'packets status <job-id>' for details on a specific job.\n")
+				fmt.Printf("packets :: daemon online (%s)\n", cfg.SchedulerAddr())
+				fmt.Printf("packets :: status ready (query jobs via 'packets status <job-id>')\n")
 				return nil
 			}
 
@@ -35,16 +34,15 @@ func NewStatusCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			client := pb.NewSchedulerClient(conn)
 			resp, err := client.GetJobStatus(cmd.Context(), &pb.GetJobStatusRequest{JobId: jobID})
 			if err != nil {
-				return fmt.Errorf("GetJobStatus: %w", err)
+				return fmt.Errorf("packets :: job %s: %w", jobID, err)
 			}
 
-			fmt.Printf("Job ID: %s\n", jobID)
-			fmt.Printf("State: %s\n", resp.State.String())
+			fmt.Printf("packets :: job %s [%s]\n", jobID, resp.State.String())
 			if resp.ArtifactRef != "" {
-				fmt.Printf("Artifact: %s\n", resp.ArtifactRef)
+				fmt.Printf("packets :: artifact: %s\n", resp.ArtifactRef)
 			}
 			if resp.ErrorMessage != "" {
-				fmt.Printf("Error: %s\n", resp.ErrorMessage)
+				fmt.Printf("packets :: error: %s\n", resp.ErrorMessage)
 			}
 
 			return nil

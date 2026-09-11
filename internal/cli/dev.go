@@ -49,7 +49,7 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 				fmt.Println("  (Generic project)")
 			} else {
 				for _, c := range topo.Components {
-					fmt.Printf("  • %s [%s] (confidence: %s)\n", c.Name, c.Type, c.Confidence)
+					fmt.Printf("  - %s [%s] (confidence: %s)\n", c.Name, c.Type, c.Confidence)
 				}
 			}
 			fmt.Println()

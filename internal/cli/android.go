@@ -115,7 +115,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 
 			fmt.Printf("Running Gradle (%s)...\n", gradleTask)
 			if resp.CacheHit {
-				fmt.Println("✓ Cache hit — reusing existing APK")
+				fmt.Println("✓ Cache hit (reusing existing APK)")
 			}
 
 			if waitFlag {
@@ -492,7 +492,7 @@ func newAndroidEmulatorCommand(_ *config.Config, logger *slog.Logger) *cobra.Com
 			}
 			fmt.Printf("Snapshots on %s:\n", serial)
 			for _, s := range snapshots {
-				fmt.Printf("  • %s\n", s)
+				fmt.Printf("  - %s\n", s)
 			}
 			return nil
 		},
@@ -635,7 +635,7 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 					if !hasSourceChanges(changes) {
 						continue
 					}
-					fmt.Printf("\n📦 %d file(s) changed — rebuilding...\n", len(changes))
+					fmt.Printf("\n📦 %d file(s) changed, rebuilding...\n", len(changes))
 					if err := runBuildInstallLaunch(ctx, cfg, logger, proj.Root, variant, serial, pkg, activity); err != nil {
 						logger.Error("rebuild failed", slog.String("err", err.Error()))
 						fmt.Println("⚠ Rebuild failed. Watching for next change...")
@@ -763,7 +763,7 @@ func runBuildInstallLaunch(
 	}
 
 	if resp.CacheHit {
-		fmt.Println("✓ Cache hit — reusing APK")
+		fmt.Println("✓ Cache hit (reusing APK)")
 	} else {
 		fmt.Printf("Running Gradle (%s)...\n", gradleTask)
 		if err := pollJobStatus(ctx, cfg, client, resp.JobId, projectRoot, logger); err != nil {

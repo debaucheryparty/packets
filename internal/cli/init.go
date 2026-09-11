@@ -67,12 +67,10 @@ Automatically detects toolchains and components in the workspace.`,
 				return fmt.Errorf("failed to save project configuration: %w", err)
 			}
 
-			fmt.Printf("✓ Initialized Packets project in %s\n", absDir)
-			fmt.Printf("  Project ID: %s\n", cfg.ProjectID)
+			fmt.Printf("packets :: project initialized [%s] in %s\n", cfg.ProjectID, absDir)
 			if len(cfg.Components) > 0 {
-				fmt.Printf("  Detected %d component(s):\n", len(cfg.Components))
 				for _, comp := range cfg.Components {
-					fmt.Printf("    - %s (%s)\n", comp.Type, comp.Path)
+					fmt.Printf("packets :: component detected [%s] at %s\n", comp.Type, comp.Path)
 				}
 			}
 			return nil
