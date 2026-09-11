@@ -459,5 +459,3 @@ func TestWorkerPool_MultiWorkerExecutionAndFailover(t *testing.T) {
 		t.Errorf("expected ErrNoWorkersAvailable when all workers unhealthy, got: %v", err)
 	}
 }
-
-

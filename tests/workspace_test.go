@@ -482,4 +482,3 @@ func TestWorkspaceSync_LifecycleModifications(t *testing.T) {
 		t.Errorf("renamed file missing in dstDir")
 	}
 }
-

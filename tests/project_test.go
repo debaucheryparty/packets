@@ -219,4 +219,3 @@ func TestBuildGraph_ArtifactRouting(t *testing.T) {
 		t.Errorf("routed content mismatch: got %q", string(content))
 	}
 }
-

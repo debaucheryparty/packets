@@ -196,4 +196,3 @@ func TestExecutor_PathTraversalPrevention(t *testing.T) {
 		t.Errorf("expected workspace escape detected error, got: %v", err)
 	}
 }
-

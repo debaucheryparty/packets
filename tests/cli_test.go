@@ -242,4 +242,3 @@ func TestCLI_StatusCommand(t *testing.T) {
 		t.Fatalf("packets status (daemon check) failed: %v", err)
 	}
 }
-

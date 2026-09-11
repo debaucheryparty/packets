@@ -438,4 +438,3 @@ func TestMCPServer_DirectGRPCBypassRejection(t *testing.T) {
 		t.Fatalf("expected direct gRPC submit with forged ticket to be rejected")
 	}
 }
-
