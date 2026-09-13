@@ -295,3 +295,13 @@ func TestCLI_StatusCommand(t *testing.T) {
 		t.Fatalf("packets status (daemon check) failed: %v", err)
 	}
 }
+
+func TestCLI_WorkerCommand(t *testing.T) {
+	cfg := &config.Config{}
+	workerCmd := cli.NewWorkerCommand(cfg, slog.Default())
+
+	workerCmd.SetArgs([]string{"status"})
+	if err := workerCmd.Execute(); err != nil {
+		t.Fatalf("packets worker status failed: %v", err)
+	}
+}
