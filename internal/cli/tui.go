@@ -336,17 +336,3 @@ func formatBoxRow(content string, width int) string {
 	}
 	return content + strings.Repeat(" ", pad)
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
