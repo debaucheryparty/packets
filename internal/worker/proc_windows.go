@@ -5,9 +5,14 @@ package worker
 import (
 	"fmt"
 	"os/exec"
+	"syscall"
 )
 
-func prepareProcessGroup(cmd *exec.Cmd) {
+func prepareProcessGroup(cmd *exec.Cmd, policy HostSecurityPolicy) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.CreationFlags |= syscall.CREATE_NEW_PROCESS_GROUP
 }
 
 func killProcessTree(cmd *exec.Cmd) error {

@@ -18,3 +18,15 @@ type BuildProvider interface {
 	Status(ctx context.Context, id apitypes.JobID) (apitypes.JobState, error)
 	FetchArtifact(ctx context.Context, id apitypes.JobID) (io.ReadCloser, error)
 }
+
+type ProviderCapabilities struct {
+	SupportsWebhooks  bool `json:"supports_webhooks"`
+	SupportsLogs      bool `json:"supports_logs"`
+	SupportsArtifacts bool `json:"supports_artifacts"`
+	SupportsCancel    bool `json:"supports_cancel"`
+}
+
+type CapableProvider interface {
+	BuildProvider
+	Capabilities() ProviderCapabilities
+}

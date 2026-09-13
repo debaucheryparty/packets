@@ -178,8 +178,9 @@ func newAndroidDevicesCommand(_ *config.Config, logger *slog.Logger) *cobra.Comm
 				fmt.Println("No devices connected.")
 				return nil
 			}
+			fmt.Printf("%-20s%-12s%s\n", "DEVICE", "TYPE", "STATUS")
 			for _, d := range devices {
-				fmt.Printf("%-25s  %s\n", d.Serial, d.State)
+				fmt.Printf("%-20s%-12s%s\n", d.Serial, string(d.Type), d.Status)
 			}
 			return nil
 		},
@@ -334,13 +335,23 @@ func newAndroidTestCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comma
 
 			cacheKey := fmt.Sprintf("android-test:%s", snapshotRef)
 			client := pb.NewSchedulerClient(conn)
+
+			device, _ := cmd.Flags().GetString("device")
+			if device == "" {
+				device, _ = cmd.Flags().GetString("serial")
+			}
+			cmdArgs := []string{"connectedAndroidTest"}
+			if device != "" {
+				cmdArgs = append(cmdArgs, "-Pandroid.testInstrumentationRunnerArguments.device="+device)
+			}
+
 			resp, err := client.SubmitJob(ctx, &pb.SubmitJobRequest{
 				CacheKey:    cacheKey,
 				Toolchain:   string(apitypes.ToolchainAndroid),
 				SnapshotRef: snapshotRef,
 				Runner:      string(apitypes.RunnerDocker),
 				SourceMode:  string(apitypes.SourceModeWorkspace),
-				CommandArgs: []string{"connectedAndroidTest"},
+				CommandArgs: cmdArgs,
 				ProjectId:   project.ResolveProjectID(dir),
 			})
 			if err != nil {
@@ -351,6 +362,8 @@ func newAndroidTestCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comma
 			return pollJobStatus(ctx, cfg, client, resp.JobId, proj.Root, logger)
 		},
 	}
+	cmd.Flags().String("device", "", "Target device or emulator (e.g. Pixel-remote)")
+	cmd.Flags().String("serial", "", "Target device serial")
 	return cmd
 }
 

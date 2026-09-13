@@ -107,6 +107,59 @@ func TestGenerateCacheKey_DiffProjects(t *testing.T) {
 	}
 }
 
+func TestGenerateCacheKey_FalseHitPrevention(t *testing.T) {
+	ctx := context.Background()
+	base := cli.CacheKeyInputs{
+		ProjectID:   "my-proj",
+		Dir:         t.TempDir(),
+		Toolchain:   "go",
+		Runner:      "host",
+		SourceMode:  "workspace",
+		SnapshotRef: "snap-12345",
+		CommandArgs: []string{"go", "build", "./..."},
+	}
+
+	baseKey, err := cli.GenerateCacheKey(ctx, base)
+	if err != nil {
+		t.Fatalf("GenerateCacheKey: %v", err)
+	}
+
+	diffRunner := base
+	diffRunner.Runner = "docker"
+	kRunner, _ := cli.GenerateCacheKey(ctx, diffRunner)
+	if kRunner == baseKey {
+		t.Errorf("false cache hit: runner change did not alter cache key")
+	}
+
+	diffTc := base
+	diffTc.Toolchain = "rust"
+	kTc, _ := cli.GenerateCacheKey(ctx, diffTc)
+	if kTc == baseKey {
+		t.Errorf("false cache hit: toolchain change did not alter cache key")
+	}
+
+	diffCmd := base
+	diffCmd.CommandArgs = []string{"go", "test", "./..."}
+	kCmd, _ := cli.GenerateCacheKey(ctx, diffCmd)
+	if kCmd == baseKey {
+		t.Errorf("false cache hit: command args change did not alter cache key")
+	}
+
+	diffSnap := base
+	diffSnap.SnapshotRef = "snap-67890"
+	kSnap, _ := cli.GenerateCacheKey(ctx, diffSnap)
+	if kSnap == baseKey {
+		t.Errorf("false cache hit: snapshot change did not alter cache key")
+	}
+
+	diffSourceMode := base
+	diffSourceMode.SourceMode = "archive"
+	kSm, _ := cli.GenerateCacheKey(ctx, diffSourceMode)
+	if kSm == baseKey {
+		t.Errorf("false cache hit: source mode change did not alter cache key")
+	}
+}
+
 func TestPullAndExtractArtifact_TarGz(t *testing.T) {
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)

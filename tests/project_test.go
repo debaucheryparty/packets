@@ -1,9 +1,14 @@
 package tests
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/debaucheryparty/packets/internal/project"
 )
@@ -217,5 +222,117 @@ func TestBuildGraph_ArtifactRouting(t *testing.T) {
 	}
 	if string(content) != "\x7fELFfake-shared-object" {
 		t.Errorf("routed content mismatch: got %q", string(content))
+	}
+}
+
+func TestBuildGraph_BuildDAG_Parallel(t *testing.T) {
+	cfg := &project.Config{
+		ProjectID: "dag-parallel",
+		Components: []project.ComponentConfig{
+			{Name: "A", Type: "go"},
+			{Name: "B", Type: "rust"},
+			{Name: "C", Type: "android", DependsOn: []string{"A", "B"}},
+		},
+	}
+
+	g, err := project.NewBuildGraph(cfg)
+	if err != nil {
+		t.Fatalf("NewBuildGraph failed: %v", err)
+	}
+
+	var mu sync.Mutex
+	running := make(map[string]bool)
+	maxConcurrent := 0
+	cRanAfterAB := false
+
+	runner := func(ctx context.Context, c project.ComponentConfig) error {
+		mu.Lock()
+		running[c.Name] = true
+		if len(running) > maxConcurrent {
+			maxConcurrent = len(running)
+		}
+		if c.Name == "C" {
+			if running["A"] || running["B"] {
+				t.Errorf("C started while A or B was still running")
+			}
+			cRanAfterAB = true
+		}
+		mu.Unlock()
+
+		select {
+		case <-time.After(50 * time.Millisecond):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		mu.Lock()
+		delete(running, c.Name)
+		mu.Unlock()
+		return nil
+	}
+
+	ctx := context.Background()
+	if err := g.BuildDAG(ctx, 4, runner); err != nil {
+		t.Fatalf("BuildDAG failed: %v", err)
+	}
+
+	if maxConcurrent < 2 {
+		t.Errorf("expected A and B to run concurrently, maxConcurrent=%d", maxConcurrent)
+	}
+	if !cRanAfterAB {
+		t.Errorf("expected C to run after A and B")
+	}
+}
+
+func TestBuildGraph_BuildDAG_ErrorCancellation(t *testing.T) {
+	cfg := &project.Config{
+		ProjectID: "dag-error",
+		Components: []project.ComponentConfig{
+			{Name: "failNode", Type: "go"},
+			{Name: "slowNode", Type: "rust"},
+			{Name: "depNode", Type: "android", DependsOn: []string{"failNode"}},
+		},
+	}
+
+	g, err := project.NewBuildGraph(cfg)
+	if err != nil {
+		t.Fatalf("NewBuildGraph failed: %v", err)
+	}
+
+	var slowCancelled int32
+	var depExecuted int32
+
+	runner := func(ctx context.Context, c project.ComponentConfig) error {
+		if c.Name == "failNode" {
+			time.Sleep(10 * time.Millisecond)
+			return errors.New("failNode error")
+		}
+		if c.Name == "slowNode" {
+			select {
+			case <-time.After(500 * time.Millisecond):
+				return nil
+			case <-ctx.Done():
+				atomic.StoreInt32(&slowCancelled, 1)
+				return ctx.Err()
+			}
+		}
+		if c.Name == "depNode" {
+			atomic.StoreInt32(&depExecuted, 1)
+			return nil
+		}
+		return nil
+	}
+
+	ctx := context.Background()
+	err = g.BuildDAG(ctx, 4, runner)
+	if err == nil {
+		t.Fatalf("expected error from BuildDAG")
+	}
+
+	if atomic.LoadInt32(&depExecuted) != 0 {
+		t.Errorf("depNode should not have executed")
+	}
+	if atomic.LoadInt32(&slowCancelled) != 1 {
+		t.Errorf("slowNode should have been cancelled when sibling failed")
 	}
 }

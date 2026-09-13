@@ -52,6 +52,7 @@ func main() {
 		cli.NewDevCommand(cfg, logger),
 		cli.NewAuthCommand(cfg, logger),
 		cli.NewPullCommand(cfg, logger),
+		cli.NewTUICommand(cfg, logger),
 	)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {

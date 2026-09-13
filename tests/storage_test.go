@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -190,4 +192,68 @@ func TestJobStore_ListRecentJobs(t *testing.T) {
 	if len(jobs) != 3 {
 		t.Errorf("got %d jobs, want 3", len(jobs))
 	}
+}
+
+func TestJobStore_FileBackedWAL_CrashRecoveryAndConcurrency(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "file_wal_test.db")
+	ctx := context.Background()
+
+	s1, err := storage.NewJobStore(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("NewJobStore: %v", err)
+	}
+
+	job1 := apitypes.Job{
+		ID:          "job_crash_1",
+		ProjectID:   "proj-crash",
+		Toolchain:   apitypes.ToolchainGo,
+		CacheKey:    "key_crash_1",
+		State:       apitypes.JobStatePending,
+		SubmittedAt: time.Now().UTC(),
+	}
+	if err := s1.CreateJob(ctx, job1); err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+
+	_ = s1.Close()
+
+	s2, err := storage.NewJobStore(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("NewJobStore after crash/close: %v", err)
+	}
+	defer func() { _ = s2.Close() }()
+
+	recovered, err := s2.GetJob(ctx, job1.ID)
+	if err != nil {
+		t.Fatalf("GetJob after recovery: %v", err)
+	}
+	if recovered.ID != job1.ID || recovered.ProjectID != job1.ProjectID {
+		t.Errorf("recovered job mismatch: got %+v, want %+v", recovered, job1)
+	}
+
+	concurrency := 8
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		workerID := i
+		go func() {
+			defer wg.Done()
+			j := apitypes.Job{
+				ID:          apitypes.JobID(fmt.Sprintf("concurrent_job_%d", workerID)),
+				ProjectID:   "proj-concurrent",
+				Toolchain:   apitypes.ToolchainRust,
+				CacheKey:    fmt.Sprintf("cache_key_%d", workerID),
+				State:       apitypes.JobStatePending,
+				SubmittedAt: time.Now().UTC(),
+			}
+			if err := s2.CreateJob(ctx, j); err != nil {
+				t.Errorf("concurrent CreateJob %d: %v", workerID, err)
+			}
+			_, _ = s2.GetJob(ctx, j.ID)
+		}()
+	}
+
+	wg.Wait()
 }

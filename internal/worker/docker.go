@@ -9,11 +9,120 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+type RunnerTrustLevel string
+
+const (
+	TrustUntrustedContainer RunnerTrustLevel = "UNTRUSTED_CONTAINER"
+	TrustTrustedHost        RunnerTrustLevel = "TRUSTED_HOST"
+)
+
+type DockerSecurityPolicy struct {
+	AllowNetwork     bool
+	DropCapabilities bool
+	NoNewPrivileges  bool
+	MemoryLimit      string
+	CPULimit         string
+	PidsLimit        int
+}
+
+func DefaultDockerSecurityPolicy() DockerSecurityPolicy {
+	return DockerSecurityPolicy{
+		AllowNetwork:     false,
+		DropCapabilities: true,
+		NoNewPrivileges:  true,
+		MemoryLimit:      "2g",
+		CPULimit:         "2",
+		PidsLimit:        512,
+	}
+}
+
+func ValidateDockerMount(mountPath string) error {
+	cleaned := filepath.Clean(mountPath)
+	lower := strings.ToLower(cleaned)
+	if strings.Contains(lower, "docker.sock") {
+		return errors.New("mounting docker socket inside container is forbidden")
+	}
+	if cleaned == "/" || cleaned == "\\" {
+		return errors.New("mounting root filesystem is forbidden")
+	}
+	forbidden := []string{"/etc", "/boot", "/dev", "/sys", "/proc", "/root", `C:\Windows`, `C:\Program Files`}
+	for _, f := range forbidden {
+		if strings.HasPrefix(cleaned, filepath.Clean(f)) {
+			return fmt.Errorf("mounting system path %s is forbidden", cleaned)
+		}
+	}
+	return nil
+}
+
+func BuildDockerArgs(opts RunOpts, policy DockerSecurityPolicy) ([]string, error) {
+	if err := ValidateDockerMount(opts.MountPath); err != nil {
+		return nil, err
+	}
+
+	for _, cmd := range opts.Command {
+		if strings.Contains(cmd, "--privileged") {
+			return nil, errors.New("privileged mode is forbidden")
+		}
+	}
+
+	memLimit := opts.MemoryLimit
+	if memLimit == "" {
+		memLimit = policy.MemoryLimit
+	}
+	if memLimit == "" {
+		memLimit = "2g"
+	}
+
+	cpuLimit := opts.CPULimit
+	if cpuLimit == "" {
+		cpuLimit = policy.CPULimit
+	}
+	if cpuLimit == "" {
+		cpuLimit = "2"
+	}
+
+	pidsLimit := policy.PidsLimit
+	if pidsLimit <= 0 {
+		pidsLimit = 512
+	}
+
+	args := []string{
+		"run", "--rm",
+		"-v", opts.MountPath + ":/workspace",
+		"-w", "/workspace",
+		"--memory=" + memLimit,
+		"--cpus=" + cpuLimit,
+		fmt.Sprintf("--pids-limit=%d", pidsLimit),
+	}
+
+	if policy.DropCapabilities {
+		args = append(args, "--cap-drop=ALL")
+	}
+	if policy.NoNewPrivileges {
+		args = append(args, "--security-opt=no-new-privileges:true")
+	}
+
+	if policy.AllowNetwork {
+		args = append(args, "--network=bridge")
+	} else {
+		args = append(args, "--network=none")
+	}
+
+	for _, e := range opts.Env {
+		args = append(args, "-e", e)
+	}
+	args = append(args, opts.Image)
+	args = append(args, opts.Command...)
+
+	return args, nil
+}
 
 type RunOpts struct {
 	Image       string
@@ -40,6 +149,14 @@ func NewDockerClient(logger *slog.Logger) *DockerClient {
 	return &DockerClient{logger: logger}
 }
 
+func (d *DockerClient) CheckAvailability(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "docker", "info")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker daemon unavailable: %w", err)
+	}
+	return nil
+}
+
 func (d *DockerClient) PullImage(ctx context.Context, image string) error {
 	cmd := exec.CommandContext(ctx, "docker", "pull", image)
 	if err := cmd.Run(); err != nil {
@@ -53,29 +170,11 @@ func (d *DockerClient) Run(ctx context.Context, opts RunOpts) (RunResult, error)
 	if timeout == 0 {
 		timeout = 30 * time.Minute
 	}
-	memLimit := opts.MemoryLimit
-	if memLimit == "" {
-		memLimit = "2g"
-	}
-	cpuLimit := opts.CPULimit
-	if cpuLimit == "" {
-		cpuLimit = "2"
-	}
 
-	args := []string{
-		"run", "--rm",
-		"-v", opts.MountPath + ":/workspace",
-		"-w", "/workspace",
-		"--memory=" + memLimit,
-		"--cpus=" + cpuLimit,
-		"--pids-limit=512",
-		"--network=none",
+	args, err := BuildDockerArgs(opts, DefaultDockerSecurityPolicy())
+	if err != nil {
+		return RunResult{}, fmt.Errorf("DockerClient.Run security check: %w", err)
 	}
-	for _, e := range opts.Env {
-		args = append(args, "-e", e)
-	}
-	args = append(args, opts.Image)
-	args = append(args, opts.Command...)
 
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -145,7 +244,7 @@ func (d *DockerClient) Run(ctx context.Context, opts RunOpts) (RunResult, error)
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
-	err := cmd.Run()
+	err = cmd.Run()
 	result := RunResult{
 		Stdout: stdoutBuf.String(),
 		Stderr: stderrBuf.String(),

@@ -36,6 +36,7 @@ type Executor struct {
 	depCache     *cache.DepManager
 	tempDir      string
 	workspaceDir string
+	hostPolicy   HostSecurityPolicy
 }
 
 func defaultWorkspaceRootDir(tempDir string) string {
@@ -50,6 +51,9 @@ func defaultWorkspaceRootDir(tempDir string) string {
 }
 
 func NewExecutor(logger *slog.Logger, docker *DockerClient, store storage.ObjectStore, registry *toolchain.Registry, logPublisher LogPublisher, tempDir string) *Executor {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	if tempDir == "" {
 		tempDir = os.TempDir()
 	}
@@ -65,7 +69,16 @@ func NewExecutor(logger *slog.Logger, docker *DockerClient, store storage.Object
 		depCache:     cache.NewDepManagerFromEnv(),
 		tempDir:      tempDir,
 		workspaceDir: wsDir,
+		hostPolicy:   DefaultHostSecurityPolicy(),
 	}
+}
+
+func (e *Executor) SetHostSecurityPolicy(p HostSecurityPolicy) {
+	e.hostPolicy = p
+}
+
+func (e *Executor) HostSecurityPolicy() HostSecurityPolicy {
+	return e.hostPolicy
 }
 
 func (e *Executor) SetWorkspaceDir(dir string) {
@@ -214,8 +227,21 @@ func (e *Executor) executeHost(ctx context.Context, job apitypes.Job, srcDir str
 		cmd = exec.Command(command[0], command[1:]...)
 	}
 
-	cmd.Dir = srcDir
-	cmd.Env = os.Environ()
+	cleanedSrcDir := filepath.Clean(srcDir)
+	if cleanedSrcDir == "" || cleanedSrcDir == "/" || cleanedSrcDir == "\\" {
+		return apitypes.ExecutionResult{ExitCode: 1, Error: fmt.Errorf("invalid working directory for host execution: %s", srcDir)}, nil
+	}
+	if err := e.hostPolicy.Validate(cleanedSrcDir, command); err != nil {
+		return apitypes.ExecutionResult{ExitCode: 1, Error: err}, nil
+	}
+	e.logger.InfoContext(ctx, "executing on trusted host runner", slog.String("job_id", string(job.ID)), slog.String("src_dir", cleanedSrcDir))
+
+	cmd.Dir = cleanedSrcDir
+	if e.hostPolicy.SanitizeEnv {
+		cmd.Env = SanitizeHostEnvironment(os.Environ())
+	} else {
+		cmd.Env = os.Environ()
+	}
 
 	owner := job.Owner
 	if owner == "" {
@@ -234,7 +260,7 @@ func (e *Executor) executeHost(ctx context.Context, job apitypes.Job, srcDir str
 		}
 	}
 
-	prepareProcessGroup(cmd)
+	prepareProcessGroup(cmd, e.hostPolicy)
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -401,4 +427,44 @@ func overrideEnv(base, overrides []string) []string {
 		}
 	}
 	return out
+}
+
+func SanitizeHostEnvironment(baseEnv []string) []string {
+	var cleaned []string
+	sensitiveSuffixes := []string{
+		"_TOKEN", "_SECRET", "_KEY", "_PASSWORD", "_PASS", "_CREDENTIALS",
+	}
+	sensitiveExact := []string{
+		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+		"GITHUB_TOKEN", "CIRCLECI_TOKEN", "PACKETS_AUTH_TOKEN",
+	}
+
+	for _, env := range baseEnv {
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.ToUpper(parts[0])
+
+		isSensitive := false
+		for _, exact := range sensitiveExact {
+			if key == exact {
+				isSensitive = true
+				break
+			}
+		}
+		if !isSensitive {
+			for _, suff := range sensitiveSuffixes {
+				if strings.HasSuffix(key, suff) {
+					isSensitive = true
+					break
+				}
+			}
+		}
+
+		if !isSensitive {
+			cleaned = append(cleaned, env)
+		}
+	}
+	return cleaned
 }

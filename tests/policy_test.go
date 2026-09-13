@@ -1,9 +1,14 @@
 package tests
 
 import (
+	"context"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/debaucheryparty/packets/internal/policy"
+	"github.com/debaucheryparty/packets/internal/storage"
 )
 
 func TestPolicyEngine_ClassifyCommand(t *testing.T) {
@@ -154,5 +159,122 @@ func TestPolicyEngine_ApprovalExpiry(t *testing.T) {
 
 	if err := engine.ValidateAndConsumeTicket(ticket.ID, ctx); err == nil {
 		t.Errorf("expected expired ticket to fail validation")
+	}
+}
+
+func TestPolicyEngine_PersistentRestartWorkflow(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "approvals.db")
+	ctx := context.Background()
+
+	store1, err := storage.NewJobStore(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("NewJobStore: %v", err)
+	}
+
+	engine1 := policy.NewPolicyEngineWithStore(policy.ApprovalAlways, store1)
+
+	execCtx := policy.ExecutionContext{
+		User:         "alice",
+		ProjectID:    "proj-alpha",
+		WorkspaceID:  "ws-beta",
+		SnapshotHash: "snap-123",
+		Command:      "make release",
+		Args:         []string{"make", "release"},
+		Action:       "BUILD",
+	}
+
+	req, err := engine1.CreatePendingApproval(execCtx)
+	if err != nil {
+		t.Fatalf("CreatePendingApproval: %v", err)
+	}
+
+	ticket, err := engine1.ApprovePending(req.ID)
+	if err != nil {
+		t.Fatalf("ApprovePending: %v", err)
+	}
+
+	_ = store1.Close()
+
+	store2, err := storage.NewJobStore(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("NewJobStore after restart: %v", err)
+	}
+	defer func() { _ = store2.Close() }()
+
+	engine2 := policy.NewPolicyEngineWithStore(policy.ApprovalAlways, store2)
+
+	tamperedCmdCtx := execCtx
+	tamperedCmdCtx.Command = "make malicious"
+	if err := engine2.ValidateAndConsumeTicket(ticket.ID, tamperedCmdCtx); err == nil {
+		t.Errorf("expected modified command to fail validation after restart")
+	}
+
+	tamperedSnapCtx := execCtx
+	tamperedSnapCtx.SnapshotHash = "snap-tampered"
+	if err := engine2.ValidateAndConsumeTicket(ticket.ID, tamperedSnapCtx); err == nil {
+		t.Errorf("expected modified snapshot to fail validation after restart")
+	}
+
+	if err := engine2.ValidateAndConsumeTicket(ticket.ID, execCtx); err != nil {
+		t.Fatalf("expected exact approved request to succeed after restart: %v", err)
+	}
+
+	if err := engine2.ValidateAndConsumeTicket(ticket.ID, execCtx); err == nil {
+		t.Errorf("expected ticket to be single-use and fail on replay")
+	}
+}
+
+func TestPolicyEngine_PersistentConcurrentConsumption(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "concurrent_approvals.db")
+	ctx := context.Background()
+
+	store, err := storage.NewJobStore(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("NewJobStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	engine := policy.NewPolicyEngineWithStore(policy.ApprovalAlways, store)
+
+	execCtx := policy.ExecutionContext{
+		User:         "bob",
+		ProjectID:    "proj-concurrent",
+		WorkspaceID:  "ws-concurrent",
+		SnapshotHash: "snap-456",
+		Command:      "cargo build",
+		Args:         []string{"cargo", "build"},
+		Action:       "BUILD",
+	}
+
+	req, err := engine.CreatePendingApproval(execCtx)
+	if err != nil {
+		t.Fatalf("CreatePendingApproval: %v", err)
+	}
+
+	ticket, err := engine.ApprovePending(req.ID)
+	if err != nil {
+		t.Fatalf("ApprovePending: %v", err)
+	}
+
+	concurrency := 10
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	var successes int32
+
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer wg.Done()
+			if err := engine.ValidateAndConsumeTicket(ticket.ID, execCtx); err == nil {
+				atomic.AddInt32(&successes, 1)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if successes != 1 {
+		t.Errorf("expected exactly 1 successful consumption, got %d", successes)
 	}
 }

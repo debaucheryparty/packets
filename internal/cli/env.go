@@ -162,6 +162,9 @@ func newEnvCheckCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 
 func newEnvPrepareCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 	var local bool
+	var modeStr string
+	var dryRun bool
+	var approve bool
 
 	cmd := &cobra.Command{
 		Use:   "prepare [dir]",
@@ -174,14 +177,43 @@ func newEnvPrepareCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 				dir = args[0]
 			}
 
+			mode := environment.ProvisionModeSafe
+			switch strings.ToUpper(modeStr) {
+			case "USERSPACE":
+				mode = environment.ProvisionModeUserspace
+			case "CONTAINER":
+				mode = environment.ProvisionModeContainer
+			case "HOST":
+				mode = environment.ProvisionModeHost
+			default:
+				mode = environment.ProvisionModeSafe
+			}
+
 			mgr := environment.NewManager()
-			topo, err := mgr.Detect(dir)
+			plan, err := mgr.PlanProvisioning(ctx, dir, mode, dryRun)
 			if err != nil {
 				return err
 			}
 
+			fmt.Printf("Provisioning Plan (mode: %s, dry-run: %t):\n", plan.Mode, plan.DryRun)
+			if len(plan.Actions) == 0 {
+				fmt.Println("  No missing toolchains detected.")
+				return nil
+			}
+
+			for i, act := range plan.Actions {
+				fmt.Printf("  [%d] %s -> %s (requires approval: %t, container preferable: %t)\n",
+					i+1, act.ToolName, act.TargetLocation, act.RequiresApproval, act.ContainerPreferable)
+			}
+			fmt.Println()
+
+			if dryRun {
+				fmt.Println("Dry-run complete. No changes were made.")
+				return nil
+			}
+
 			if local {
-				return mgr.PrepareComponents(ctx, topo.Components, func(msg string) {
+				return mgr.ExecutePlan(ctx, plan, approve, func(msg string) {
 					fmt.Println(msg)
 				})
 			}
@@ -194,6 +226,10 @@ func newEnvPrepareCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 
 			projectID := project.ResolveProjectID(dir)
 			remote := environment.NewRemoteClient(conn)
+			topo, err := mgr.Detect(dir)
+			if err != nil {
+				return err
+			}
 			return remote.Prepare(ctx, projectID, topo.RootPath, topo.Components, func(msg string) {
 				fmt.Println(msg)
 			})
@@ -201,6 +237,9 @@ func newEnvPrepareCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&local, "local", false, "Run preparation on the local machine instead of remote worker")
+	cmd.Flags().StringVar(&modeStr, "mode", "SAFE", "Provisioning mode: SAFE, USERSPACE, CONTAINER, HOST")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the provisioning plan without executing actions")
+	cmd.Flags().BoolVar(&approve, "approve", false, "Explicitly approve privileged host provisioning operations")
 	return cmd
 }
 

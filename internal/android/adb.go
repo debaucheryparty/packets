@@ -18,9 +18,42 @@ type ADBClient interface {
 	Forward(ctx context.Context, serial, localSpec, remoteSpec string) error
 }
 
+type DeviceType string
+
+const (
+	DeviceTypeEmulator DeviceType = "emulator"
+	DeviceTypeNetwork  DeviceType = "network"
+	DeviceTypeUSB      DeviceType = "usb"
+)
+
 type Device struct {
 	Serial string
 	State  string
+	Type   DeviceType
+	Status string
+}
+
+func ClassifyDevice(serial, state string) Device {
+	dType := DeviceTypeUSB
+	if strings.HasPrefix(serial, "emulator-") {
+		dType = DeviceTypeEmulator
+	} else if strings.Contains(serial, ":") || strings.HasPrefix(serial, "remote-") || strings.HasSuffix(serial, "-remote") {
+		dType = DeviceTypeNetwork
+	}
+
+	status := "offline"
+	if state == "device" {
+		status = "ready"
+	} else if state != "" {
+		status = state
+	}
+
+	return Device{
+		Serial: serial,
+		State:  state,
+		Type:   dType,
+		Status: status,
+	}
 }
 
 type ExecADBClient struct {
@@ -33,6 +66,22 @@ func NewExecADBClient() *ExecADBClient {
 
 func (a *ExecADBClient) adb(ctx context.Context, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, a.adbPath, args...)
+}
+
+func (a *ExecADBClient) Connect(ctx context.Context, endpoint string) error {
+	out, err := a.adb(ctx, "connect", endpoint).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("adb connect %s: %w (%s)", endpoint, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func (a *ExecADBClient) Disconnect(ctx context.Context, endpoint string) error {
+	out, err := a.adb(ctx, "disconnect", endpoint).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("adb disconnect %s: %w (%s)", endpoint, err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func (a *ExecADBClient) Devices(ctx context.Context) ([]Device, error) {
@@ -52,7 +101,7 @@ func (a *ExecADBClient) Devices(ctx context.Context) ([]Device, error) {
 		if len(parts) < 2 {
 			continue
 		}
-		devices = append(devices, Device{Serial: parts[0], State: parts[1]})
+		devices = append(devices, ClassifyDevice(parts[0], parts[1]))
 	}
 	return devices, nil
 }

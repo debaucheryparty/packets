@@ -27,6 +27,14 @@ A remote build execution and caching system designed specifically for developers
 The core principle:
 > **The developer's machine is the interface. The remote machine performs expensive development work.**
 
+## Why This Project?
+
+I built **Packets** out of personal necessity. I work on a 5-year-old laptop with only 8GB of RAM. Whenever I tried doing heavy development - compiling large codebases, running Docker containers, building Android or Rust projects, or running local AI tools - my laptop would lag, freeze, and struggle to keep up.
+
+Upgrading hardware is not always an option, but limited hardware should never stop anyone from building ambitious software. I created Packets so that my laptop can stay fast and responsive as just the editing interface, while all the heavy compilation, container workloads, and testing happen seamlessly on a remote machine. It made coding enjoyable again without needing expensive new hardware. 
+
+~ [Sahil](https://github.com/aikyaam)
+
 Packets provides:
 * **Remote Development Mode (`packets dev .`)**: Automatic polyglot project detection (Android, Zephyr, Rust, Go, Node, CMake), remote environment checks, workspace sync, and AI instructions generation.
 * **Persistent Remote Workspaces (`packets sync`)**: Incremental file synchronization and full synchronization with remote deletion detection.

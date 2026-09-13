@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -21,6 +22,18 @@ var (
 	ErrPendingNotFound       = errors.New("pending approval not found")
 	ErrPendingExpired        = errors.New("pending approval expired")
 )
+
+type ApprovalStore interface {
+	SavePending(ctx context.Context, pa *PendingApproval) error
+	GetPending(ctx context.Context, id string) (*PendingApproval, error)
+	DeletePending(ctx context.Context, id string) error
+	SaveTicket(ctx context.Context, ticket *ApprovalTicket) error
+	GetTicket(ctx context.Context, id string) (*ApprovalTicket, error)
+	ConsumeTicket(ctx context.Context, id string, reqHash string) error
+	SaveSessionApproval(ctx context.Context, key string) error
+	HasSessionApproval(ctx context.Context, key string) (bool, error)
+	ExpireTicketForTest(ctx context.Context, id string) error
+}
 
 type CommandCategory string
 
@@ -90,6 +103,7 @@ type ApprovalRequest struct {
 
 type PolicyEngine struct {
 	mode          ApprovalMode
+	store         ApprovalStore
 	sessionTokens map[string]bool
 	pending       map[string]*PendingApproval
 	tickets       map[string]*ApprovalTicket
@@ -97,11 +111,16 @@ type PolicyEngine struct {
 }
 
 func NewPolicyEngine(mode ApprovalMode) *PolicyEngine {
+	return NewPolicyEngineWithStore(mode, nil)
+}
+
+func NewPolicyEngineWithStore(mode ApprovalMode, store ApprovalStore) *PolicyEngine {
 	if mode == "" {
 		mode = ApprovalAlways
 	}
 	return &PolicyEngine{
 		mode:          mode,
+		store:         store,
 		sessionTokens: make(map[string]bool),
 		pending:       make(map[string]*PendingApproval),
 		tickets:       make(map[string]*ApprovalTicket),
@@ -183,9 +202,15 @@ func (p *PolicyEngine) RequiresApproval(req ApprovalRequest) bool {
 	}
 
 	if p.mode == ApprovalSession {
+		sessionKey := fmt.Sprintf("%s:%s", req.WorkspaceID, req.Category)
+		if p.store != nil {
+			has, err := p.store.HasSessionApproval(context.Background(), sessionKey)
+			if err == nil && has {
+				return false
+			}
+		}
 		p.mu.RLock()
 		defer p.mu.RUnlock()
-		sessionKey := fmt.Sprintf("%s:%s", req.WorkspaceID, req.Category)
 		return !p.sessionTokens[sessionKey]
 	}
 
@@ -193,9 +218,12 @@ func (p *PolicyEngine) RequiresApproval(req ApprovalRequest) bool {
 }
 
 func (p *PolicyEngine) GrantSessionApproval(req ApprovalRequest) {
+	sessionKey := fmt.Sprintf("%s:%s", req.WorkspaceID, req.Category)
+	if p.store != nil {
+		_ = p.store.SaveSessionApproval(context.Background(), sessionKey)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	sessionKey := fmt.Sprintf("%s:%s", req.WorkspaceID, req.Category)
 	p.sessionTokens[sessionKey] = true
 }
 
@@ -214,9 +242,6 @@ func (p *PolicyEngine) RequiresApprovalFor(ec ExecutionContext) bool {
 }
 
 func (p *PolicyEngine) CreatePendingApproval(ec ExecutionContext) (*PendingApproval, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	now := time.Now().UTC()
 	pa := &PendingApproval{
 		ID:        randomID("appr_req"),
@@ -224,11 +249,21 @@ func (p *PolicyEngine) CreatePendingApproval(ec ExecutionContext) (*PendingAppro
 		CreatedAt: now,
 		ExpiresAt: now.Add(5 * time.Minute),
 	}
+	if p.store != nil {
+		if err := p.store.SavePending(context.Background(), pa); err != nil {
+			return nil, err
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.pending[pa.ID] = pa
 	return pa, nil
 }
 
 func (p *PolicyEngine) GetPendingApproval(pendingID string) (*PendingApproval, error) {
+	if p.store != nil {
+		return p.store.GetPending(context.Background(), pendingID)
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -243,6 +278,30 @@ func (p *PolicyEngine) GetPendingApproval(pendingID string) (*PendingApproval, e
 }
 
 func (p *PolicyEngine) ApprovePending(pendingID string) (*ApprovalTicket, error) {
+	if p.store != nil {
+		pa, err := p.store.GetPending(context.Background(), pendingID)
+		if err != nil {
+			return nil, err
+		}
+		_ = p.store.DeletePending(context.Background(), pendingID)
+
+		now := time.Now().UTC()
+		ticket := &ApprovalTicket{
+			ID:          randomID("ticket"),
+			RequestHash: pa.Context.Hash(),
+			CreatedAt:   now,
+			ExpiresAt:   now.Add(5 * time.Minute),
+			Used:        false,
+		}
+		if err := p.store.SaveTicket(context.Background(), ticket); err != nil {
+			return nil, err
+		}
+		p.mu.Lock()
+		p.tickets[ticket.ID] = ticket
+		p.mu.Unlock()
+		return ticket, nil
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -274,6 +333,10 @@ func (p *PolicyEngine) ValidateAndConsumeTicket(ticketID string, ec ExecutionCon
 		return ErrApprovalRequired
 	}
 
+	if p.store != nil {
+		return p.store.ConsumeTicket(context.Background(), ticketID, ec.Hash())
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -300,6 +363,9 @@ func (p *PolicyEngine) ValidateAndConsumeTicket(ticketID string, ec ExecutionCon
 }
 
 func (p *PolicyEngine) ExpireTicketForTest(ticketID string) {
+	if p.store != nil {
+		_ = p.store.ExpireTicketForTest(context.Background(), ticketID)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if ticket, ok := p.tickets[ticketID]; ok {

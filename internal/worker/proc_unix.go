@@ -7,10 +7,19 @@ import (
 	"syscall"
 )
 
-func prepareProcessGroup(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
+func prepareProcessGroup(cmd *exec.Cmd, policy HostSecurityPolicy) {
+	attr := cmd.SysProcAttr
+	if attr == nil {
+		attr = &syscall.SysProcAttr{}
 	}
+	attr.Setpgid = true
+	if policy.DedicatedUID > 0 || policy.DedicatedGID > 0 {
+		attr.Credential = &syscall.Credential{
+			Uid: uint32(policy.DedicatedUID),
+			Gid: uint32(policy.DedicatedGID),
+		}
+	}
+	cmd.SysProcAttr = attr
 }
 
 func killProcessTree(cmd *exec.Cmd) error {

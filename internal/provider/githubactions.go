@@ -2,6 +2,9 @@ package provider
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -192,4 +195,42 @@ func (g *GitHubActions) FetchArtifact(ctx context.Context, id apitypes.JobID) (i
 	}
 
 	return dlResp.Body, nil
+}
+
+func (g *GitHubActions) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{
+		SupportsWebhooks:  true,
+		SupportsLogs:      true,
+		SupportsArtifacts: true,
+		SupportsCancel:    true,
+	}
+}
+
+func VerifyGitHubWebhookSignature(payload []byte, sigHeader, secret string) bool {
+	if !strings.HasPrefix(sigHeader, "sha256=") {
+		return false
+	}
+	expectedSig := sigHeader[7:]
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	computedSig := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(computedSig), []byte(expectedSig))
+}
+
+func NormalizeWebhookState(status, conclusion string) apitypes.JobState {
+	if status == "completed" {
+		switch conclusion {
+		case "success":
+			return apitypes.JobStateSucceeded
+		default:
+			return apitypes.JobStateFailed
+		}
+	}
+	if status == "in_progress" {
+		return apitypes.JobStateRunning
+	}
+	if status == "queued" {
+		return apitypes.JobStateDispatched
+	}
+	return apitypes.JobStatePending
 }

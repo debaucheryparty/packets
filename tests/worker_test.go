@@ -196,3 +196,131 @@ func TestExecutor_PathTraversalPrevention(t *testing.T) {
 		t.Errorf("expected workspace escape detected error, got: %v", err)
 	}
 }
+
+func TestDocker_HardeningPolicy(t *testing.T) {
+	if err := worker.ValidateDockerMount("/var/run/docker.sock"); err == nil {
+		t.Errorf("expected mounting docker socket to be rejected")
+	}
+	if err := worker.ValidateDockerMount("/"); err == nil {
+		t.Errorf("expected mounting root filesystem to be rejected")
+	}
+	if err := worker.ValidateDockerMount("/etc"); err == nil {
+		t.Errorf("expected mounting /etc to be rejected")
+	}
+
+	opts := worker.RunOpts{
+		Image:     "alpine:latest",
+		MountPath: "/tmp/fake_workspace",
+		Command:   []string{"echo", "hi"},
+	}
+
+	policy := worker.DefaultDockerSecurityPolicy()
+	args, err := worker.BuildDockerArgs(opts, policy)
+	if err != nil {
+		t.Fatalf("BuildDockerArgs failed: %v", err)
+	}
+
+	argStr := strings.Join(args, " ")
+	if !strings.Contains(argStr, "--cap-drop=ALL") {
+		t.Errorf("expected args to contain --cap-drop=ALL, got: %s", argStr)
+	}
+	if !strings.Contains(argStr, "--security-opt=no-new-privileges:true") {
+		t.Errorf("expected args to contain no-new-privileges, got: %s", argStr)
+	}
+	if !strings.Contains(argStr, "--network=none") {
+		t.Errorf("expected args to contain --network=none, got: %s", argStr)
+	}
+	if !strings.Contains(argStr, "--pids-limit=512") {
+		t.Errorf("expected args to contain --pids-limit=512, got: %s", argStr)
+	}
+
+	optsPriv := worker.RunOpts{
+		Image:     "alpine:latest",
+		MountPath: "/tmp/fake_workspace",
+		Command:   []string{"--privileged", "sh"},
+	}
+	if _, err := worker.BuildDockerArgs(optsPriv, policy); err == nil {
+		t.Errorf("expected privileged container request to be rejected")
+	}
+}
+
+func TestHost_EnvironmentSanitization(t *testing.T) {
+	dirtyEnv := []string{
+		"PATH=/usr/bin:/bin",
+		"HOME=/home/user",
+		"PACKETS_AUTH_TOKEN=supersecret123",
+		"GITHUB_TOKEN=ghp_fake12345",
+		"AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+		"DB_PASSWORD=secretpassword",
+		"SAFE_FLAG=1",
+	}
+
+	cleanEnv := worker.SanitizeHostEnvironment(dirtyEnv)
+	cleanStr := strings.Join(cleanEnv, "\n")
+
+	if strings.Contains(cleanStr, "supersecret123") {
+		t.Errorf("PACKETS_AUTH_TOKEN was not sanitized")
+	}
+	if strings.Contains(cleanStr, "ghp_fake12345") {
+		t.Errorf("GITHUB_TOKEN was not sanitized")
+	}
+	if strings.Contains(cleanStr, "EXAMPLEKEY") {
+		t.Errorf("AWS_SECRET_ACCESS_KEY was not sanitized")
+	}
+	if strings.Contains(cleanStr, "secretpassword") {
+		t.Errorf("DB_PASSWORD was not sanitized")
+	}
+	if !strings.Contains(cleanStr, "PATH=/usr/bin:/bin") {
+		t.Errorf("PATH was improperly removed")
+	}
+	if !strings.Contains(cleanStr, "SAFE_FLAG=1") {
+		t.Errorf("SAFE_FLAG was improperly removed")
+	}
+}
+
+func TestHost_SecurityPolicy(t *testing.T) {
+	policy := worker.DefaultHostSecurityPolicy()
+
+	validDir := t.TempDir()
+	if err := policy.Validate(validDir, []string{"echo", "hello"}); err != nil {
+		t.Fatalf("expected validDir to pass: %v", err)
+	}
+
+	if err := policy.Validate("/", []string{"echo", "test"}); err == nil {
+		t.Errorf("expected root directory to be rejected")
+	}
+
+	if err := policy.Validate(validDir, []string{"rm", "-rf", "/"}); err == nil {
+		t.Errorf("expected rm -rf / to be rejected by host policy")
+	}
+
+	if err := policy.Validate(validDir, []string{"mkfs.ext4", "/dev/sda"}); err == nil {
+		t.Errorf("expected mkfs to be rejected by host policy")
+	}
+
+	policyWithRoot := worker.HostSecurityPolicy{
+		AllowedRoots: []string{validDir},
+	}
+	otherDir := t.TempDir()
+	if err := policyWithRoot.Validate(otherDir, []string{"echo", "test"}); err == nil {
+		t.Errorf("expected directory outside AllowedRoots to be rejected")
+	}
+
+	exec := worker.NewExecutor(nil, nil, nil, toolchain.NewRegistry(), nil, validDir)
+	exec.SetHostSecurityPolicy(policy)
+	ctx := context.Background()
+
+	res, err := exec.Execute(ctx, apitypes.Job{
+		ID:          "job-blocked-cmd",
+		ProjectID:   "proj-sec",
+		Runner:      apitypes.RunnerHost,
+		SourceMode:  apitypes.SourceModeWorkspace,
+		CommandArgs: []string{"format", "C:"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected dispatch error: %v", err)
+	}
+	if res.ExitCode == 0 {
+		t.Errorf("expected non-zero exit code for blocked command")
+	}
+}

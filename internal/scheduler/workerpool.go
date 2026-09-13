@@ -22,10 +22,20 @@ type WorkerNode struct {
 	ID            string
 	Executor      *worker.Executor
 	Healthy       bool
+	Draining      bool
 	ActiveJobs    int
 	MaxJobs       int
 	Labels        map[string]string
+	Capabilities  []string
 	LastHeartbeat time.Time
+}
+
+type WorkerPoolMetrics struct {
+	TotalWorkers    int
+	HealthyWorkers  int
+	DrainingWorkers int
+	TotalActiveJobs int
+	TotalCapacity   int
 }
 
 type WorkerPool struct {
@@ -54,7 +64,9 @@ func (w *WorkerPool) RegisterWorker(node *WorkerNode) {
 	if node.MaxJobs <= 0 {
 		node.MaxJobs = 5
 	}
-	node.LastHeartbeat = time.Now().UTC()
+	if node.LastHeartbeat.IsZero() {
+		node.LastHeartbeat = time.Now().UTC()
+	}
 	w.workers[node.ID] = node
 }
 
@@ -75,6 +87,61 @@ func (w *WorkerPool) SetWorkerHealth(id string, healthy bool) error {
 	return nil
 }
 
+func (w *WorkerPool) Heartbeat(id string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	node, ok := w.workers[id]
+	if !ok {
+		return ErrWorkerNotFound
+	}
+	node.LastHeartbeat = time.Now().UTC()
+	return nil
+}
+
+func (w *WorkerPool) DrainWorker(id string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	node, ok := w.workers[id]
+	if !ok {
+		return ErrWorkerNotFound
+	}
+	node.Draining = true
+	return nil
+}
+
+func (w *WorkerPool) CleanupStaleWorkers(timeout time.Duration) []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	now := time.Now().UTC()
+	var removed []string
+	for id, node := range w.workers {
+		if now.Sub(node.LastHeartbeat) > timeout {
+			delete(w.workers, id)
+			removed = append(removed, id)
+		}
+	}
+	return removed
+}
+
+func (w *WorkerPool) Metrics() WorkerPoolMetrics {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	var m WorkerPoolMetrics
+	m.TotalWorkers = len(w.workers)
+	for _, node := range w.workers {
+		if node.Healthy && !node.Draining {
+			m.HealthyWorkers++
+		}
+		if node.Draining {
+			m.DrainingWorkers++
+		}
+		m.TotalActiveJobs += node.ActiveJobs
+		m.TotalCapacity += node.MaxJobs
+	}
+	return m
+}
+
 func (w *WorkerPool) SelectWorker(toolchain apitypes.Toolchain) (*WorkerNode, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -83,7 +150,7 @@ func (w *WorkerPool) SelectWorker(toolchain apitypes.Toolchain) (*WorkerNode, er
 	minActive := int(^uint(0) >> 1)
 
 	for _, node := range w.workers {
-		if !node.Healthy {
+		if !node.Healthy || node.Draining {
 			continue
 		}
 		if node.ActiveJobs >= node.MaxJobs {
@@ -113,18 +180,40 @@ func (w *WorkerPool) ReleaseWorker(id string) {
 }
 
 func (w *WorkerPool) ExecuteOnWorker(ctx context.Context, job apitypes.Job) (apitypes.ExecutionResult, string, error) {
-	node, err := w.SelectWorker(job.Toolchain)
-	if err != nil {
-		return apitypes.ExecutionResult{}, "", err
-	}
-	defer w.ReleaseWorker(node.ID)
+	const maxRetries = 2
+	var lastErr error
+	var lastWorkerID string
 
-	if node.Executor == nil {
-		return apitypes.ExecutionResult{}, node.ID, fmt.Errorf("worker %s executor unconfigured", node.ID)
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		node, err := w.SelectWorker(job.Toolchain)
+		if err != nil {
+			if lastErr != nil {
+				return apitypes.ExecutionResult{}, lastWorkerID, lastErr
+			}
+			return apitypes.ExecutionResult{}, "", err
+		}
+		lastWorkerID = node.ID
+
+		if node.Executor == nil {
+			w.ReleaseWorker(node.ID)
+			_ = w.SetWorkerHealth(node.ID, false)
+			lastErr = fmt.Errorf("worker %s executor unconfigured", node.ID)
+			continue
+		}
+
+		res, err := node.Executor.Execute(ctx, job)
+		w.ReleaseWorker(node.ID)
+
+		if err != nil && ctx.Err() == nil {
+			_ = w.SetWorkerHealth(node.ID, false)
+			lastErr = err
+			continue
+		}
+
+		return res, node.ID, err
 	}
 
-	res, err := node.Executor.Execute(ctx, job)
-	return res, node.ID, err
+	return apitypes.ExecutionResult{}, lastWorkerID, lastErr
 }
 
 func (w *WorkerPool) WorkerCount() int {

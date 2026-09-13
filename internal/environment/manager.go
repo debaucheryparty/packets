@@ -129,3 +129,101 @@ func (m *Manager) PrepareReport(ctx context.Context, report *EnvironmentReport, 
 	}
 	return nil
 }
+
+func (m *Manager) PlanProvisioning(ctx context.Context, dir string, mode ProvisionMode, dryRun bool) (*ProvisionPlan, error) {
+	if mode == "" {
+		mode = ProvisionModeSafe
+	}
+	report, err := m.Check(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	plan := &ProvisionPlan{
+		ProjectRoot: report.ProjectRoot,
+		Mode:        mode,
+		DryRun:      dryRun,
+	}
+
+	for _, reqs := range report.Components {
+		for _, req := range reqs {
+			if req.Status == StatusMissing {
+				action := ProvisionAction{
+					ToolName:            req.Name,
+					Missing:             true,
+					Mode:                mode,
+					Command:             req.PrepareCmd,
+					ContainerPreferable: true,
+				}
+
+				switch mode {
+				case ProvisionModeSafe:
+					action.TargetLocation = "userspace/local"
+					action.RequiresApproval = false
+					if strings.Contains(req.PrepareCmd, "sudo") || strings.Contains(req.PrepareCmd, "apt") || strings.Contains(req.PrepareCmd, "brew") {
+						action.RequiresApproval = true
+					}
+				case ProvisionModeUserspace:
+					action.TargetLocation = "user_home"
+					action.RequiresApproval = false
+				case ProvisionModeContainer:
+					action.TargetLocation = "container_image"
+					action.RequiresApproval = false
+					action.ContainerPreferable = true
+				case ProvisionModeHost:
+					action.TargetLocation = "system_host"
+					action.RequiresApproval = true
+				}
+
+				plan.Actions = append(plan.Actions, action)
+			}
+		}
+	}
+
+	return plan, nil
+}
+
+func (m *Manager) ExecutePlan(ctx context.Context, plan *ProvisionPlan, approved bool, onProgress func(string)) error {
+	if plan == nil || len(plan.Actions) == 0 {
+		if onProgress != nil {
+			onProgress("No actions required. Environment is ready.")
+		}
+		return nil
+	}
+
+	if plan.DryRun {
+		if onProgress != nil {
+			onProgress(fmt.Sprintf("Dry-run plan verified (%d actions, mode: %s)", len(plan.Actions), plan.Mode))
+		}
+		return nil
+	}
+
+	for _, action := range plan.Actions {
+		if action.RequiresApproval && !approved {
+			return fmt.Errorf("explicit approval required for host provisioning of %s", action.ToolName)
+		}
+
+		if action.Command != "" {
+			if onProgress != nil {
+				onProgress(fmt.Sprintf("Provisioning %s (%s): %s", action.ToolName, action.TargetLocation, action.Command))
+			}
+
+			var cmd *exec.Cmd
+			if runtime.GOOS == "windows" {
+				cmd = exec.CommandContext(ctx, "cmd.exe", "/c", action.Command)
+			} else {
+				cmd = exec.CommandContext(ctx, "sh", "-c", action.Command)
+			}
+
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("prepare %s failed: %w\n%s", action.ToolName, err, strings.TrimSpace(string(out)))
+			}
+		}
+	}
+
+	if onProgress != nil {
+		onProgress("Provisioning plan executed successfully.")
+	}
+	return nil
+}

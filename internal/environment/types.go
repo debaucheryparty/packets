@@ -69,3 +69,29 @@ type EnvironmentSpec struct {
 	Target     string            `json:"target,omitempty"`
 	Versions   map[string]string `json:"versions,omitempty"`
 }
+
+type ProvisionMode string
+
+const (
+	ProvisionModeSafe      ProvisionMode = "SAFE"
+	ProvisionModeUserspace ProvisionMode = "USERSPACE"
+	ProvisionModeContainer ProvisionMode = "CONTAINER"
+	ProvisionModeHost      ProvisionMode = "HOST"
+)
+
+type ProvisionAction struct {
+	ToolName            string        `json:"tool_name"`
+	Missing             bool          `json:"missing"`
+	Mode                ProvisionMode `json:"mode"`
+	TargetLocation      string        `json:"target_location"`
+	RequiresApproval    bool          `json:"requires_approval"`
+	ContainerPreferable bool          `json:"container_preferable"`
+	Command             string        `json:"command"`
+}
+
+type ProvisionPlan struct {
+	ProjectRoot string            `json:"project_root"`
+	Mode        ProvisionMode     `json:"mode"`
+	Actions     []ProvisionAction `json:"actions"`
+	DryRun      bool              `json:"dry_run"`
+}

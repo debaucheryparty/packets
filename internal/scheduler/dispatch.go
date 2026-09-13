@@ -128,6 +128,8 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 		}
 		if err := d.store.CompleteJob(ctx, job.ID, result.ArtifactRef, job.CacheKey); err != nil {
 			d.logger.ErrorContext(ctx, "CompleteJob failed", slog.String("job_id", string(job.ID)), slog.String("err", err.Error()))
+		} else {
+			d.logger.InfoContext(ctx, "job succeeded", slog.String("job_id", string(job.ID)), slog.Duration("duration", time.Since(job.SubmittedAt)), slog.String("runner", string(job.Runner)))
 		}
 
 	case apitypes.RunnerGitHub:
@@ -162,6 +164,8 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 		}
 		if err := d.store.CompleteJob(ctx, job.ID, result.ArtifactRef, job.CacheKey); err != nil {
 			d.logger.ErrorContext(ctx, "CompleteJob failed", slog.String("job_id", string(job.ID)), slog.String("err", err.Error()))
+		} else {
+			d.logger.InfoContext(ctx, "job succeeded", slog.String("job_id", string(job.ID)), slog.Duration("duration", time.Since(job.SubmittedAt)), slog.String("runner", string(job.Runner)))
 		}
 
 	default:

@@ -482,3 +482,83 @@ func TestWorkspaceSync_LifecycleModifications(t *testing.T) {
 		t.Errorf("renamed file missing in dstDir")
 	}
 }
+
+func TestArtifactJournalCompensation(t *testing.T) {
+	wsDir := t.TempDir()
+
+	journal, err := workspace.NewArtifactJournal(wsDir)
+	if err != nil {
+		t.Fatalf("NewArtifactJournal failed: %v", err)
+	}
+
+	preExistingFile := filepath.Join(wsDir, "pre_existing.txt")
+	if err := os.WriteFile(preExistingFile, []byte("original content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wfID := "wf_cancellation_test_1"
+
+	ctx := context.Background()
+
+	art1 := filepath.Join(wsDir, "stage1_output.bin")
+	if err := journal.RecordArtifact(ctx, wfID, "stage_1", art1); err != nil {
+		t.Fatalf("RecordArtifact failed: %v", err)
+	}
+	if err := os.WriteFile(art1, []byte("stage 1 data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := journal.RecordArtifact(ctx, wfID, "stage_2", preExistingFile); err != nil {
+		t.Fatalf("RecordArtifact overwrite failed: %v", err)
+	}
+	if err := os.WriteFile(preExistingFile, []byte("overwritten by stage 2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	art2 := filepath.Join(wsDir, "stage2_partial.bin")
+	if err := journal.RecordArtifact(ctx, wfID, "stage_2", art2); err != nil {
+		t.Fatalf("RecordArtifact failed: %v", err)
+	}
+	if err := os.WriteFile(art2, []byte("stage 2 partial data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	uncomp, err := journal.ListUncompensatedWorkflows()
+	if err != nil {
+		t.Fatalf("ListUncompensatedWorkflows failed: %v", err)
+	}
+	if len(uncomp) != 1 || uncomp[0] != wfID {
+		t.Fatalf("expected [%s], got %v", wfID, uncomp)
+	}
+
+	if err := journal.Compensate(ctx, wfID); err != nil {
+		t.Fatalf("Compensate failed: %v", err)
+	}
+
+	if _, err := os.Stat(art1); !os.IsNotExist(err) {
+		t.Errorf("art1 was not removed on compensation")
+	}
+	if _, err := os.Stat(art2); !os.IsNotExist(err) {
+		t.Errorf("art2 was not removed on compensation")
+	}
+
+	restoredContent, err := os.ReadFile(preExistingFile)
+	if err != nil {
+		t.Fatalf("failed to read restored pre-existing file: %v", err)
+	}
+	if string(restoredContent) != "original content" {
+		t.Errorf("expected 'original content', got %q", string(restoredContent))
+	}
+
+	if err := journal.Compensate(ctx, wfID); err != nil {
+		t.Errorf("idempotent Compensate failed: %v", err)
+	}
+
+	uncompAfter, err := journal.ListUncompensatedWorkflows()
+	if err != nil {
+		t.Fatalf("ListUncompensatedWorkflows failed: %v", err)
+	}
+	if len(uncompAfter) != 0 {
+		t.Errorf("expected 0 uncompensated workflows, got %v", uncompAfter)
+	}
+}

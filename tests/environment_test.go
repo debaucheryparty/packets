@@ -292,3 +292,53 @@ func TestRemoteEnvironment_Check(t *testing.T) {
 		t.Errorf("expected Go component in report")
 	}
 }
+
+func TestEnvironment_ProvisioningModes(t *testing.T) {
+	ctx := context.Background()
+	mgr := environment.NewManager()
+
+	fakeDir := t.TempDir()
+
+	planSafe, err := mgr.PlanProvisioning(ctx, fakeDir, environment.ProvisionModeSafe, true)
+	if err != nil {
+		t.Fatalf("PlanProvisioning Safe failed: %v", err)
+	}
+	if planSafe.Mode != environment.ProvisionModeSafe {
+		t.Errorf("expected mode SAFE, got %s", planSafe.Mode)
+	}
+	if !planSafe.DryRun {
+		t.Errorf("expected DryRun true")
+	}
+
+	testPlan := &environment.ProvisionPlan{
+		ProjectRoot: fakeDir,
+		Mode:        environment.ProvisionModeHost,
+		Actions: []environment.ProvisionAction{
+			{
+				ToolName:         "fake-compiler",
+				Missing:          true,
+				Mode:             environment.ProvisionModeHost,
+				TargetLocation:   "system_host",
+				RequiresApproval: true,
+				Command:          "echo installing",
+			},
+		},
+		DryRun: false,
+	}
+
+	err = mgr.ExecutePlan(ctx, testPlan, false, nil)
+	if err == nil {
+		t.Errorf("expected unapproved host action to fail")
+	}
+
+	executed := false
+	err = mgr.ExecutePlan(ctx, testPlan, true, func(msg string) {
+		executed = true
+	})
+	if err != nil {
+		t.Fatalf("approved host action failed: %v", err)
+	}
+	if !executed {
+		t.Errorf("expected progress message from execution")
+	}
+}

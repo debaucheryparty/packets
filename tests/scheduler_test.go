@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"sync"
@@ -457,5 +458,89 @@ func TestWorkerPool_MultiWorkerExecutionAndFailover(t *testing.T) {
 	_, err = pool.SelectWorker("go")
 	if !errors.Is(err, scheduler.ErrNoWorkersAvailable) {
 		t.Errorf("expected ErrNoWorkersAvailable when all workers unhealthy, got: %v", err)
+	}
+}
+
+func TestWorkerPool_Scale5And10Workers(t *testing.T) {
+	for _, numWorkers := range []int{5, 10} {
+		t.Run(fmt.Sprintf("%d_workers", numWorkers), func(t *testing.T) {
+			pool := scheduler.NewWorkerPool(nil, nil, numWorkers*2)
+
+			for i := 0; i < numWorkers; i++ {
+				id := fmt.Sprintf("fleet-worker-%d", i)
+				pool.RegisterWorker(&scheduler.WorkerNode{
+					ID:           id,
+					Healthy:      true,
+					MaxJobs:      4,
+					Capabilities: []string{"go", "rust", "android"},
+				})
+			}
+
+			if pool.WorkerCount() != numWorkers {
+				t.Fatalf("expected %d workers registered, got %d", numWorkers, pool.WorkerCount())
+			}
+
+			metrics := pool.Metrics()
+			if metrics.TotalWorkers != numWorkers || metrics.HealthyWorkers != numWorkers {
+				t.Errorf("expected %d healthy workers in metrics, got %+v", numWorkers, metrics)
+			}
+
+			selected := make(map[string]int)
+			for i := 0; i < numWorkers*2; i++ {
+				w, err := pool.SelectWorker("go")
+				if err != nil {
+					t.Fatalf("SelectWorker failed at job %d: %v", i, err)
+				}
+				selected[w.ID]++
+			}
+
+			for id, count := range selected {
+				if count != 2 {
+					t.Errorf("expected exactly 2 jobs per worker for balanced load, got %d for %s", count, id)
+				}
+				pool.ReleaseWorker(id)
+				pool.ReleaseWorker(id)
+			}
+		})
+	}
+}
+
+func TestWorkerPool_HeartbeatDrainingAndCleanup(t *testing.T) {
+	pool := scheduler.NewWorkerPool(nil, nil, 10)
+
+	node1 := &scheduler.WorkerNode{ID: "worker-live", Healthy: true, MaxJobs: 2}
+	node2 := &scheduler.WorkerNode{ID: "worker-draining", Healthy: true, MaxJobs: 2}
+	node3 := &scheduler.WorkerNode{ID: "worker-stale", Healthy: true, MaxJobs: 2, LastHeartbeat: time.Now().UTC().Add(-10 * time.Minute)}
+
+	pool.RegisterWorker(node1)
+	pool.RegisterWorker(node2)
+	pool.RegisterWorker(node3)
+
+	if err := pool.Heartbeat("worker-live"); err != nil {
+		t.Fatalf("Heartbeat failed: %v", err)
+	}
+
+	if err := pool.DrainWorker("worker-draining"); err != nil {
+		t.Fatalf("DrainWorker failed: %v", err)
+	}
+
+	removed := pool.CleanupStaleWorkers(5 * time.Minute)
+	if len(removed) != 1 || removed[0] != "worker-stale" {
+		t.Errorf("expected worker-stale to be cleaned up, got %v", removed)
+	}
+
+	for i := 0; i < 2; i++ {
+		w, err := pool.SelectWorker("go")
+		if err != nil {
+			t.Fatalf("SelectWorker failed: %v", err)
+		}
+		if w.ID != "worker-live" {
+			t.Errorf("expected only worker-live to be selectable, got %s", w.ID)
+		}
+	}
+
+	_, err := pool.SelectWorker("go")
+	if !errors.Is(err, scheduler.ErrNoWorkersAvailable) {
+		t.Errorf("expected ErrNoWorkersAvailable when worker-live is at capacity, got %v", err)
 	}
 }

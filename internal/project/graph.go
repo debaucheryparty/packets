@@ -1,10 +1,12 @@
 package project
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 type BuildGraph struct {
@@ -163,7 +165,17 @@ func (g *BuildGraph) BuildOrderFor(targetName string) ([]ComponentConfig, error)
 	return subset, nil
 }
 
+type ArtifactRecorder interface {
+	RecordArtifact(ctx context.Context, workflowID, stageID, path string) error
+}
+
+type NodeRunner func(ctx context.Context, c ComponentConfig) error
+
 func (g *BuildGraph) RouteArtifacts(root string, c ComponentConfig) error {
+	return g.RouteArtifactsWithJournal(context.Background(), root, c, "", "", nil)
+}
+
+func (g *BuildGraph) RouteArtifactsWithJournal(ctx context.Context, root string, c ComponentConfig, workflowID, stageID string, recorder ArtifactRecorder) error {
 	if len(c.ArtifactRouting) == 0 {
 		return nil
 	}
@@ -172,6 +184,12 @@ func (g *BuildGraph) RouteArtifacts(root string, c ComponentConfig) error {
 	for srcRel, dstRel := range c.ArtifactRouting {
 		src := filepath.Clean(filepath.Join(basePath, srcRel))
 		dst := filepath.Clean(filepath.Join(root, dstRel))
+
+		if recorder != nil && workflowID != "" {
+			if err := recorder.RecordArtifact(ctx, workflowID, stageID, dst); err != nil {
+				return fmt.Errorf("record artifact %s: %w", dst, err)
+			}
+		}
 
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return fmt.Errorf("mkdir dst dir: %w", err)
@@ -182,6 +200,121 @@ func (g *BuildGraph) RouteArtifacts(root string, c ComponentConfig) error {
 		}
 	}
 	return nil
+}
+
+func (g *BuildGraph) BuildDAG(ctx context.Context, concurrency int, runner NodeRunner) error {
+	if len(g.names) == 0 {
+		return nil
+	}
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+
+	inDegree := make(map[string]int)
+	for _, name := range g.names {
+		inDegree[name] = 0
+	}
+	dependents := make(map[string][]string)
+	for name, deps := range g.deps {
+		for _, dep := range deps {
+			dependents[dep] = append(dependents[dep], name)
+			inDegree[name]++
+		}
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var mu sync.Mutex
+	var firstErr error
+	var wg sync.WaitGroup
+
+	sem := make(chan struct{}, concurrency)
+	total := len(g.names)
+	completed := 0
+
+	ready := make(chan string, total)
+	for _, name := range g.names {
+		if inDegree[name] == 0 {
+			ready <- name
+		}
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case name, ok := <-ready:
+				if !ok {
+					return
+				}
+				mu.Lock()
+				if firstErr != nil {
+					mu.Unlock()
+					return
+				}
+				mu.Unlock()
+
+				sem <- struct{}{}
+				wg.Add(1)
+
+				go func(compName string) {
+					defer func() {
+						<-sem
+						wg.Done()
+					}()
+
+					comp := g.components[compName]
+					err := runner(ctx, comp)
+
+					mu.Lock()
+					defer mu.Unlock()
+
+					if err != nil {
+						if firstErr == nil {
+							firstErr = fmt.Errorf("component %q failed: %w", compName, err)
+							cancel()
+						}
+						return
+					}
+
+					completed++
+					if completed == total {
+						close(done)
+						return
+					}
+
+					for _, next := range dependents[compName] {
+						inDegree[next]--
+						if inDegree[next] == 0 {
+							select {
+							case ready <- next:
+							case <-ctx.Done():
+								return
+							}
+						}
+					}
+				}(name)
+			}
+		}
+	}()
+
+	select {
+	case <-done:
+		wg.Wait()
+		return nil
+	case <-ctx.Done():
+		wg.Wait()
+		mu.Lock()
+		defer mu.Unlock()
+		if firstErr != nil {
+			return firstErr
+		}
+		return ctx.Err()
+	}
 }
 
 func copyFile(src, dst string) error {

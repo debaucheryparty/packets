@@ -13,6 +13,7 @@ import (
 
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/environment"
+	"github.com/debaucheryparty/packets/internal/policy"
 	"github.com/debaucheryparty/packets/internal/provider"
 	"github.com/debaucheryparty/packets/internal/scheduler"
 	"github.com/debaucheryparty/packets/internal/storage"
@@ -90,7 +91,9 @@ func main() {
 		logger.Warn("job recovery failed", slog.String("error", err.Error()))
 	}
 
+	policyEngine := policy.NewPolicyEngineWithStore(policy.ApprovalAlways, store)
 	srv := scheduler.NewServer(dispatcher, store, logBroker, objectStore, providers)
+	srv.SetPolicyEngine(policyEngine)
 
 	var serverOpts []grpc.ServerOption
 	serverOpts = append(serverOpts,

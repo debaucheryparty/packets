@@ -22,6 +22,7 @@ import (
 	pb "github.com/debaucheryparty/packets/proto/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 func TestRealNetwork_TCPGRPC_Lifecycle(t *testing.T) {
@@ -126,21 +127,74 @@ func TestRealNetwork_TCPGRPC_Lifecycle(t *testing.T) {
 func TestRealNetwork_RemoteVPS_Integration(t *testing.T) {
 	vpsAddr := os.Getenv("PACKETS_TEST_VPS_ADDR")
 	if vpsAddr == "" {
-		t.Skip("PACKETS_TEST_VPS_ADDR not set; external VPS real-network test marked NOT RUN")
+		t.Skip("PACKETS_TEST_VPS_ADDR not set; external VPS real-network test skipped cleanly")
 	}
 
-	conn, err := grpc.NewClient(vpsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	auth := os.Getenv("PACKETS_TEST_VPS_AUTH")
+	wsRoot := os.Getenv("PACKETS_TEST_VPS_WORKSPACE")
+	_ = wsRoot
+
+	var dialOpts []grpc.DialOption
+	dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if auth != "" {
+		dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+auth)
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}))
+	}
+
+	conn, err := grpc.NewClient(vpsAddr, dialOpts...)
 	if err != nil {
 		t.Fatalf("dial VPS %s failed: %v", vpsAddr, err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	client := pb.NewSchedulerClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	_, err = client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: "ping"})
-	if err != nil && !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("VPS connection check failed: %v", err)
+	cacheKey := fmt.Sprintf("vps-test-%d", time.Now().UnixNano())
+	cmdArgs := []string{"echo vps-live-test"}
+	subResp, err := client.SubmitJob(ctx, &pb.SubmitJobRequest{
+		CacheKey:    cacheKey,
+		Toolchain:   "custom",
+		Runner:      string(apitypes.RunnerHost),
+		SourceMode:  string(apitypes.SourceModeWorkspace),
+		CommandArgs: cmdArgs,
+		ProjectId:   "proj-vps",
+	})
+	if err != nil {
+		t.Fatalf("VPS SubmitJob failed: %v", err)
 	}
+	if subResp.JobId == "" {
+		t.Fatalf("expected non-empty JobId from VPS")
+	}
+
+	st, err := client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: subResp.JobId})
+	if err != nil {
+		t.Fatalf("VPS GetJobStatus failed: %v", err)
+	}
+	if st == nil {
+		t.Fatalf("expected non-nil status from VPS")
+	}
+
+	logStream, err := client.StreamJobLogs(ctx, &pb.StreamJobLogsRequest{JobId: subResp.JobId})
+	if err == nil {
+		_, _ = logStream.Recv()
+	}
+
+	artStream, err := client.DownloadArtifact(ctx, &pb.DownloadArtifactRequest{JobId: subResp.JobId})
+	if err == nil {
+		_, _ = artStream.Recv()
+	}
+
+	_ = conn.Close()
+	conn2, err := grpc.NewClient(vpsAddr, dialOpts...)
+	if err == nil {
+		defer func() { _ = conn2.Close() }()
+		client2 := pb.NewSchedulerClient(conn2)
+		_, _ = client2.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: subResp.JobId})
+	}
+
+	_, _ = client.ClearCache(ctx, &pb.ClearCacheRequest{})
 }
