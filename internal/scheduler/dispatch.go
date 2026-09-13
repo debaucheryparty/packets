@@ -21,6 +21,7 @@ type Dispatcher struct {
 	executor     *worker.Executor
 	limiter      *QuotaLimiter
 	logBroker    *LogBroker
+	workerPool   *WorkerPool
 }
 
 func NewDispatcher(logger *slog.Logger, store *storage.JobStore, providers map[apitypes.ProviderName]provider.BuildProvider, executor *worker.Executor, limiter *QuotaLimiter, logBroker *LogBroker) *Dispatcher {
@@ -33,6 +34,10 @@ func NewDispatcher(logger *slog.Logger, store *storage.JobStore, providers map[a
 		limiter:      limiter,
 		logBroker:    logBroker,
 	}
+}
+
+func (d *Dispatcher) SetWorkerPool(wp *WorkerPool) {
+	d.workerPool = wp
 }
 
 func (d *Dispatcher) Submit(ctx context.Context, req apitypes.BuildRequest, cacheKey, owner string) (apitypes.JobID, bool, error) {
@@ -110,11 +115,16 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 	switch job.Runner {
 	case apitypes.RunnerDocker:
 		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
-		if d.executor == nil {
+		var result apitypes.ExecutionResult
+		var err error
+		if d.workerPool != nil && d.workerPool.WorkerCount() > 0 {
+			result, _, err = d.workerPool.ExecuteOnWorker(ctx, job)
+		} else if d.executor != nil {
+			result, err = d.executor.Execute(ctx, job)
+		} else {
 			_ = d.store.FailJob(ctx, job.ID, "executor not configured")
 			return
 		}
-		result, err := d.executor.Execute(ctx, job)
 		if err != nil || result.ExitCode != 0 {
 			errMsg := ""
 			if err != nil {
@@ -147,11 +157,16 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 
 	case apitypes.RunnerHost, apitypes.RunnerLocal:
 		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
-		if d.executor == nil {
+		var result apitypes.ExecutionResult
+		var err error
+		if d.workerPool != nil && d.workerPool.WorkerCount() > 0 {
+			result, _, err = d.workerPool.ExecuteOnWorker(ctx, job)
+		} else if d.executor != nil {
+			result, err = d.executor.Execute(ctx, job)
+		} else {
 			_ = d.store.FailJob(ctx, job.ID, "executor not configured")
 			return
 		}
-		result, err := d.executor.Execute(ctx, job)
 		if err != nil || result.ExitCode != 0 {
 			errMsg := ""
 			if err != nil {

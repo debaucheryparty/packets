@@ -86,6 +86,24 @@ func main() {
 	}
 
 	dispatcher := scheduler.NewDispatcher(logger, store, providers, executor, quotaLimiter, logBroker)
+	workerPool := scheduler.NewWorkerPool(logger, dispatcher, 20)
+	dispatcher.SetWorkerPool(workerPool)
+
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				stale := workerPool.CleanupStaleWorkers(45 * time.Second)
+				if len(stale) > 0 {
+					logger.Info("cleaned up stale peer workers", slog.Int("count", len(stale)))
+				}
+			}
+		}
+	}()
 
 	if err := dispatcher.RecoverPendingJobs(ctx); err != nil {
 		logger.Warn("job recovery failed", slog.String("error", err.Error()))

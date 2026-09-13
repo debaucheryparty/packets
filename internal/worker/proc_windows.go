@@ -8,11 +8,13 @@ import (
 	"syscall"
 )
 
+const belowNormalPriorityClass = 0x00004000
+
 func prepareProcessGroup(cmd *exec.Cmd, policy HostSecurityPolicy) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
-	cmd.SysProcAttr.CreationFlags |= syscall.CREATE_NEW_PROCESS_GROUP
+	cmd.SysProcAttr.CreationFlags |= syscall.CREATE_NEW_PROCESS_GROUP | belowNormalPriorityClass
 }
 
 func killProcessTree(cmd *exec.Cmd) error {

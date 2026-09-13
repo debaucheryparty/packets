@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,21 +18,21 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func NewWorkerCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func NewWorkerCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "worker",
 		Short: "Manage peer compute workers and connect peer laptops to Packets",
 	}
 
 	cmd.AddCommand(
-		newWorkerJoinCommand(cfg, logger),
-		newWorkerStatusCommand(cfg, logger),
+		newWorkerJoinCommand(),
+		newWorkerStatusCommand(),
 	)
 
 	return cmd
 }
 
-func newWorkerJoinCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newWorkerJoinCommand() *cobra.Command {
 	var name string
 	var maxJobs int
 	var dockerOnly bool
@@ -59,16 +60,20 @@ func newWorkerJoinCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 
 			fmt.Printf("packets :: connecting to scheduler at %s...\n", schedulerAddr)
 
-			dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
-			defer dialCancel()
-
-			conn, err := grpc.DialContext(dialCtx, schedulerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+			conn, err := grpc.NewClient(schedulerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
-				return fmt.Errorf("failed to connect to scheduler %s: %w", schedulerAddr, err)
+				return fmt.Errorf("failed to create client for scheduler %s: %w", schedulerAddr, err)
 			}
 			defer func() { _ = conn.Close() }()
 
 			client := pb.NewSchedulerClient(conn)
+
+			pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
+			_, pingErr := client.GetJobStatus(pingCtx, &pb.GetJobStatusRequest{JobId: "ping"})
+			pingCancel()
+			if pingErr != nil && !strings.Contains(pingErr.Error(), "not found") {
+				return fmt.Errorf("failed to connect to scheduler %s: %w", schedulerAddr, pingErr)
+			}
 
 			cores := runtime.NumCPU()
 			osArch := fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
@@ -109,7 +114,7 @@ func newWorkerJoinCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 	return cmd
 }
 
-func newWorkerStatusCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newWorkerStatusCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Display local worker node capabilities and hardware specs",
