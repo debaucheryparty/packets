@@ -177,7 +177,7 @@ func newEnvPrepareCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 				dir = args[0]
 			}
 
-			mode := environment.ProvisionModeSafe
+			var mode environment.ProvisionMode
 			switch strings.ToUpper(modeStr) {
 			case "USERSPACE":
 				mode = environment.ProvisionModeUserspace
