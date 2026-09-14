@@ -52,9 +52,16 @@ func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slo
 	}
 
 	data := buf.Bytes()
-	if err := workspace.ExtractArtifact(data, destDir, fmt.Sprintf("artifact_%s.bin", jobID)); err != nil {
+	count, err := workspace.ExtractArtifactCount(data, destDir, fmt.Sprintf("artifact_%s.bin", jobID))
+	if err != nil {
 		return err
 	}
-	logger.InfoContext(ctx, "artifact extracted successfully", slog.String("dest", destDir))
+	if count == 0 {
+		logger.WarnContext(ctx, "artifact archive contained 0 files", slog.String("dest", destDir))
+		fmt.Println("⚠ Note: The remote build completed, but no files matched the artifact patterns.")
+	} else {
+		logger.InfoContext(ctx, "artifact extracted successfully", slog.String("dest", destDir), slog.Int("files", count))
+		fmt.Printf("✓ %d artifact file(s) extracted into %s\n", count, destDir)
+	}
 	return nil
 }

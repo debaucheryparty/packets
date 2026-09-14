@@ -10,26 +10,33 @@ import (
 )
 
 func ExtractArtifact(data []byte, destDir, defaultFileName string) error {
+	_, err := ExtractArtifactCount(data, destDir, defaultFileName)
+	return err
+}
+
+func ExtractArtifactCount(data []byte, destDir, defaultFileName string) (int, error) {
 	if len(data) == 0 {
-		return fmt.Errorf("artifact payload is empty")
+		return 0, fmt.Errorf("artifact payload is empty")
 	}
 
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return fmt.Errorf("create dest dir: %w", err)
+		return 0, fmt.Errorf("create dest dir: %w", err)
 	}
 
 	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
-		if err := ExtractTarGz(bytes.NewReader(data), destDir); err != nil {
-			return fmt.Errorf("extract tar.gz artifact: %w", err)
+		count, err := ExtractTarGzCount(bytes.NewReader(data), destDir)
+		if err != nil {
+			return count, fmt.Errorf("extract tar.gz artifact: %w", err)
 		}
-		return nil
+		return count, nil
 	}
 
 	if len(data) >= 4 && data[0] == 0x50 && data[1] == 0x4b && data[2] == 0x03 && data[3] == 0x04 {
 		zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 		if err != nil {
-			return fmt.Errorf("open zip artifact: %w", err)
+			return 0, fmt.Errorf("open zip artifact: %w", err)
 		}
+		count := 0
 		for _, zf := range zipReader.File {
 			outPath := filepath.Join(destDir, filepath.FromSlash(zf.Name))
 			if zf.FileInfo().IsDir() {
@@ -45,10 +52,11 @@ func ExtractArtifact(data []byte, destDir, defaultFileName string) error {
 			if err == nil {
 				_, _ = io.Copy(outFile, rc)
 				_ = outFile.Close()
+				count++
 			}
 			_ = rc.Close()
 		}
-		return nil
+		return count, nil
 	}
 
 	if defaultFileName == "" {
@@ -56,8 +64,8 @@ func ExtractArtifact(data []byte, destDir, defaultFileName string) error {
 	}
 	outPath := filepath.Join(destDir, defaultFileName)
 	if err := os.WriteFile(outPath, data, 0o644); err != nil {
-		return fmt.Errorf("write raw artifact: %w", err)
+		return 0, fmt.Errorf("write raw artifact: %w", err)
 	}
 
-	return nil
+	return 1, nil
 }

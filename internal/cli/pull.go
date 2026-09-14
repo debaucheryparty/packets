@@ -52,7 +52,6 @@ generated code stubs, or build outputs) directly into your local project directo
 				if err := PullAndExtractArtifact(ctx, cfg, logger, jobIDFlag, destDir); err != nil {
 					return fmt.Errorf("pull artifact: %w", err)
 				}
-				fmt.Println("✓ Artifacts downloaded and extracted successfully.")
 				return nil
 			}
 

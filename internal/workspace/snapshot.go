@@ -180,28 +180,37 @@ func writeFile(dest string, mode os.FileMode, r io.Reader) error {
 }
 
 func ExtractTarGz(r io.Reader, targetDir string) error {
+	_, err := ExtractTarGzCount(r, targetDir)
+	return err
+}
+
+func ExtractTarGzCount(r io.Reader, targetDir string) (int, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return fmt.Errorf("ExtractTarGz gzip: %w", err)
+		return 0, fmt.Errorf("ExtractTarGz gzip: %w", err)
 	}
 	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
+	count := 0
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("ExtractTarGz next: %w", err)
+			return count, fmt.Errorf("ExtractTarGz next: %w", err)
 		}
 		if err := validatePath(hdr.Name); err != nil {
-			return err
+			return count, err
 		}
 		dest := filepath.Join(targetDir, filepath.FromSlash(hdr.Name))
 		if err := writeFile(dest, os.FileMode(hdr.Mode), tr); err != nil {
-			return fmt.Errorf("ExtractTarGz write %s: %w", hdr.Name, err)
+			return count, fmt.Errorf("ExtractTarGz write %s: %w", hdr.Name, err)
+		}
+		if hdr.Typeflag != tar.TypeDir {
+			count++
 		}
 	}
-	return nil
+	return count, nil
 }
