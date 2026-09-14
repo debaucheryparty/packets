@@ -26,7 +26,10 @@ var defaultIgnorePatterns = []string{
 	".env",
 	".env.local",
 	".packets/",
+	".packets_snapshot",
+	".packets_manifest.json*",
 	".DS_Store",
+	"Thumbs.db",
 }
 
 func ParseIgnoreFile(path string) ([]string, error) {

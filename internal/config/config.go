@@ -152,6 +152,9 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 	if cfg.DefaultRunner == "" {
 		cfg.DefaultRunner = "docker"
 	}
+	if cfg.SQLiteDBPath == "" {
+		cfg.SQLiteDBPath = "packets.db"
+	}
 	if cfg.WorkspaceTempDir == "" {
 		cfg.WorkspaceTempDir = os.TempDir()
 	}

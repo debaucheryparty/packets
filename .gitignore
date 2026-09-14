@@ -2,6 +2,9 @@ bin/
 .env
 .env.local
 .env.*
+.packets/
+.packets_snapshot
+.packets_manifest.json*
 deploy/local.env
 *.db
 *.db-journal

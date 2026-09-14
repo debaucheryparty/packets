@@ -136,12 +136,12 @@ func ExtractSnapshot(ctx context.Context, store storage.ObjectStore, owner, snap
 
 func verifyExtractedRootHash(targetDir, expectedHash, manifestMarkerFile string) error {
 	markerName := filepath.Base(manifestMarkerFile)
-	got, err := ScanWorkspace(targetDir, []string{markerName})
+	extraIgnore := []string{markerName, ".packets_snapshot", ".packets_manifest.json", ".packets_manifest.json.tmp", ".DS_Store"}
+	got, err := ScanWorkspace(targetDir, extraIgnore)
 	if err != nil {
 		return fmt.Errorf("ExtractSnapshot verify scan: %w", err)
 	}
 	if got.RootHash != expectedHash {
-
 		_ = os.Remove(manifestMarkerFile)
 		return fmt.Errorf(
 			"ExtractSnapshot integrity check failed: expected RootHash %s, got %s (workspace may be corrupted)",
@@ -166,13 +166,17 @@ func writeFile(dest string, mode os.FileMode, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode|0o600)
+	normMode := os.FileMode(normalizeMode(uint32(mode), false))
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, normMode)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
-	_, err = io.Copy(f, r)
-	return err
+	if _, err := io.Copy(f, r); err != nil {
+		return err
+	}
+	_ = os.Chmod(dest, normMode)
+	return nil
 }
 
 func ExtractTarGz(r io.Reader, targetDir string) error {
