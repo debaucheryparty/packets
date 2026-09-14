@@ -87,8 +87,20 @@ func (s *Server) SubmitJob(ctx context.Context, req *pb.SubmitJobRequest) (*pb.S
 			Action:       action,
 		}
 		if s.policyEngine.RequiresApprovalFor(ec) {
-			if err := s.policyEngine.ValidateAndConsumeTicket(ticketID, ec); err != nil {
-				return nil, status.Errorf(codes.PermissionDenied, "policy rejection: %v", err)
+			if ticketID != "" {
+				if err := s.policyEngine.ValidateAndConsumeTicket(ticketID, ec); err != nil {
+					return nil, status.Errorf(codes.PermissionDenied, "policy rejection: %v", err)
+				}
+			} else if s.policyEngine.Approver() != nil {
+				approved, always, err := s.policyEngine.Approver().RequestApproval(ctx, ec)
+				if err != nil || !approved {
+					return nil, status.Errorf(codes.PermissionDenied, "execution rejected by node owner")
+				}
+				if always {
+					s.policyEngine.WhitelistCommand(ec.Command)
+				}
+			} else {
+				return nil, status.Errorf(codes.PermissionDenied, "policy rejection: human approval required")
 			}
 		}
 	}

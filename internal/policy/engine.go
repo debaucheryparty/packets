@@ -1,12 +1,15 @@
 package policy
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -101,12 +104,18 @@ type ApprovalRequest struct {
 	TargetNode  string          `json:"target_node"`
 }
 
+type InteractiveApprover interface {
+	RequestApproval(ctx context.Context, ec ExecutionContext) (approved bool, always bool, err error)
+}
+
 type PolicyEngine struct {
 	mode          ApprovalMode
 	store         ApprovalStore
 	sessionTokens map[string]bool
 	pending       map[string]*PendingApproval
 	tickets       map[string]*ApprovalTicket
+	whitelisted   map[string]bool
+	approver      InteractiveApprover
 	mu            sync.RWMutex
 }
 
@@ -124,7 +133,45 @@ func NewPolicyEngineWithStore(mode ApprovalMode, store ApprovalStore) *PolicyEng
 		sessionTokens: make(map[string]bool),
 		pending:       make(map[string]*PendingApproval),
 		tickets:       make(map[string]*ApprovalTicket),
+		whitelisted:   make(map[string]bool),
 	}
+}
+
+func (p *PolicyEngine) SetApprover(a InteractiveApprover) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.approver = a
+}
+
+func (p *PolicyEngine) Approver() InteractiveApprover {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.approver
+}
+
+func (p *PolicyEngine) WhitelistCommand(cmd string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	clean := strings.ToLower(strings.TrimSpace(cmd))
+	p.whitelisted[clean] = true
+	parts := strings.Fields(clean)
+	if len(parts) > 0 {
+		p.whitelisted[parts[0]] = true
+	}
+}
+
+func (p *PolicyEngine) IsWhitelisted(cmd string) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	clean := strings.ToLower(strings.TrimSpace(cmd))
+	if p.whitelisted[clean] {
+		return true
+	}
+	parts := strings.Fields(clean)
+	if len(parts) > 0 && p.whitelisted[parts[0]] {
+		return true
+	}
+	return false
 }
 
 func (p *PolicyEngine) ClassifyCommand(cmd string) CommandCategory {
@@ -146,7 +193,15 @@ func (p *PolicyEngine) ClassifyCommand(cmd string) CommandCategory {
 		strings.HasPrefix(lower, "git log") ||
 		strings.HasPrefix(lower, "uname") ||
 		strings.HasPrefix(lower, "which ") ||
-		strings.HasPrefix(lower, "echo ") {
+		strings.HasPrefix(lower, "echo ") ||
+		strings.HasPrefix(lower, "sw_vers") ||
+		strings.HasPrefix(lower, "whoami") ||
+		strings.HasPrefix(lower, "pwd") ||
+		strings.HasPrefix(lower, "uptime") ||
+		strings.HasPrefix(lower, "date") ||
+		strings.HasPrefix(lower, "hostname") ||
+		strings.HasPrefix(lower, "df") ||
+		strings.HasPrefix(lower, "ps") {
 		return CategoryReadOnly
 	}
 
@@ -235,6 +290,9 @@ func randomID(prefix string) string {
 
 func (p *PolicyEngine) RequiresApprovalFor(ec ExecutionContext) bool {
 	if p.mode == ApprovalNever {
+		return false
+	}
+	if p.IsWhitelisted(ec.Command) {
 		return false
 	}
 	cat := p.ClassifyCommand(ec.Command)
@@ -370,5 +428,82 @@ func (p *PolicyEngine) ExpireTicketForTest(ticketID string) {
 	defer p.mu.Unlock()
 	if ticket, ok := p.tickets[ticketID]; ok {
 		ticket.ExpiresAt = time.Now().UTC().Add(-1 * time.Hour)
+	}
+}
+
+type ConsoleApprover struct {
+	timeout time.Duration
+	in      io.Reader
+	out     io.Writer
+	mu      sync.Mutex
+}
+
+func NewConsoleApprover() *ConsoleApprover {
+	return &ConsoleApprover{
+		timeout: 60 * time.Second,
+		in:      os.Stdin,
+		out:     os.Stdout,
+	}
+}
+
+func (c *ConsoleApprover) SetIO(in io.Reader, out io.Writer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.in = in
+	c.out = out
+}
+
+func (c *ConsoleApprover) RequestApproval(ctx context.Context, ec ExecutionContext) (bool, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	user := ec.User
+	if user == "" {
+		user = "remote-peer"
+	}
+
+	fmt.Fprintf(c.out, "\n\033[1;33m[packetsd :: FRIEND APPROVAL REQUIRED]\033[0m\n")
+	fmt.Fprintf(c.out, "Peer \033[1;36m%s\033[0m wants to run a non-whitelisted command:\n", user)
+	fmt.Fprintf(c.out, "  \033[1;37mCommand:\033[0m %s\n", ec.Command)
+	fmt.Fprintf(c.out, "  \033[1;37mAction:\033[0m  %s\n", ec.Action)
+	fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o (timeout 60s): ")
+
+	answerCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		reader := bufio.NewReader(c.in)
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			errCh <- err
+			return
+		}
+		answerCh <- strings.TrimSpace(line)
+	}()
+
+	timeoutTimer := time.NewTimer(c.timeout)
+	defer timeoutTimer.Stop()
+
+	select {
+	case <-ctx.Done():
+		fmt.Fprintf(c.out, "\n\033[31mRequest cancelled by client.\033[0m\n")
+		return false, false, ctx.Err()
+	case <-timeoutTimer.C:
+		fmt.Fprintf(c.out, "\n\033[31mApproval timed out (no response).\033[0m\n")
+		return false, false, errors.New("approval timed out")
+	case err := <-errCh:
+		return false, false, err
+	case ans := <-answerCh:
+		lower := strings.ToLower(ans)
+		if lower == "y" || lower == "yes" {
+			fmt.Fprintf(c.out, "\033[32mApproved for this run.\033[0m\n\n")
+			return true, false, nil
+		}
+		if lower == "a" || lower == "always" {
+			fmt.Fprintf(c.out, "\033[32mApproved and whitelisted for this session.\033[0m\n\n")
+			return true, true, nil
+		}
+		fmt.Fprintf(c.out, "\033[31mRejected by owner.\033[0m\n\n")
+		return false, false, nil
 	}
 }

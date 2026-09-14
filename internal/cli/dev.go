@@ -85,7 +85,7 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			}
 			fmt.Println()
 
-			fmt.Println("✓ Packets Remote Development Mode is Ready!")
+			fmt.Println("Packets Remote Development Mode is Ready!")
 			return nil
 		},
 	}

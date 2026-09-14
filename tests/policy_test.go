@@ -1,8 +1,10 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -276,5 +278,74 @@ func TestPolicyEngine_PersistentConcurrentConsumption(t *testing.T) {
 
 	if successes != 1 {
 		t.Errorf("expected exactly 1 successful consumption, got %d", successes)
+	}
+}
+
+func TestPolicyEngine_VPSModeDirectExecution(t *testing.T) {
+	engine := policy.NewPolicyEngine(policy.ApprovalNever)
+	execCtx := policy.ExecutionContext{
+		Command: "go build ./...",
+		Action:  "BUILD",
+	}
+	if engine.RequiresApprovalFor(execCtx) {
+		t.Errorf("expected VPS mode (ApprovalNever) to never require approval")
+	}
+}
+
+func TestPolicyEngine_FriendModeInteractiveApproval(t *testing.T) {
+	engine := policy.NewPolicyEngine(policy.ApprovalAlways)
+	approver := policy.NewConsoleApprover()
+
+	inBuf := strings.NewReader("y\n")
+	var outBuf bytes.Buffer
+	approver.SetIO(inBuf, &outBuf)
+	engine.SetApprover(approver)
+
+	execCtx := policy.ExecutionContext{
+		User:    "alice",
+		Command: "./gradlew assembleDebug",
+		Action:  "BUILD",
+	}
+
+	if !engine.RequiresApprovalFor(execCtx) {
+		t.Fatalf("expected unwhitelisted command in friend mode to require approval")
+	}
+
+	approved, always, err := engine.Approver().RequestApproval(context.Background(), execCtx)
+	if err != nil {
+		t.Fatalf("RequestApproval: %v", err)
+	}
+	if !approved || always {
+		t.Errorf("expected approved=true, always=false for 'y'")
+	}
+
+	inBufAlways := strings.NewReader("a\n")
+	approver.SetIO(inBufAlways, &outBuf)
+	approved, always, err = engine.Approver().RequestApproval(context.Background(), execCtx)
+	if err != nil {
+		t.Fatalf("RequestApproval always: %v", err)
+	}
+	if !approved || !always {
+		t.Errorf("expected approved=true, always=true for 'a'")
+	}
+
+	engine.WhitelistCommand(execCtx.Command)
+	if engine.RequiresApprovalFor(execCtx) {
+		t.Errorf("expected whitelisted command to bypass approval")
+	}
+
+	inBufReject := strings.NewReader("n\n")
+	approver.SetIO(inBufReject, &outBuf)
+	execCtxOther := policy.ExecutionContext{
+		User:    "alice",
+		Command: "npm run deploy",
+		Action:  "CUSTOM",
+	}
+	approved, _, err = engine.Approver().RequestApproval(context.Background(), execCtxOther)
+	if err != nil {
+		t.Fatalf("RequestApproval reject: %v", err)
+	}
+	if approved {
+		t.Errorf("expected approved=false for 'n'")
 	}
 }

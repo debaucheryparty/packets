@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -58,6 +59,7 @@ func main() {
 	defer func() { _ = store.Close() }()
 
 	var objectStore storage.ObjectStore
+	var diskStore *storage.DiskStore
 	if cfg.ObjectStoreType != "" {
 		objectStore, err = storage.NewS3ObjectStore(
 			cfg.ObjectStoreEndpoint,
@@ -71,6 +73,16 @@ func main() {
 			logger.Error("failed to init object store", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
+	} else {
+		storageDir := filepath.Join(cfg.WorkspaceTempDir, "packets-storage")
+		ds, err := storage.NewDiskObjectStore(storageDir, "http://127.0.0.1:9090")
+		if err != nil {
+			logger.Error("failed to init local disk store", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		objectStore = ds
+		diskStore = ds
+		logger.Info("initialized local disk object store", slog.String("dir", storageDir))
 	}
 
 	logBroker := scheduler.NewLogBroker()
@@ -109,7 +121,30 @@ func main() {
 		logger.Warn("job recovery failed", slog.String("error", err.Error()))
 	}
 
-	policyEngine := policy.NewPolicyEngineWithStore(policy.ApprovalAlways, store)
+	friendMode := os.Getenv("PACKETS_ROLE") == "friend"
+	for _, arg := range os.Args[1:] {
+		if arg == "--friend" {
+			friendMode = true
+			break
+		}
+	}
+
+	approvalMode := policy.ApprovalMode(os.Getenv("PACKETS_APPROVAL_MODE"))
+	if approvalMode == "" {
+		if friendMode {
+			approvalMode = policy.ApprovalAlways
+		} else {
+			approvalMode = policy.ApprovalNever
+		}
+	}
+
+	policyEngine := policy.NewPolicyEngineWithStore(approvalMode, store)
+	if friendMode {
+		policyEngine.SetApprover(policy.NewConsoleApprover())
+		logger.Info("running in friend peer mode", slog.String("approval", "interactive"))
+	} else {
+		logger.Info("running in vps node mode", slog.String("approval", "auto"))
+	}
 	srv := scheduler.NewServer(dispatcher, store, logBroker, objectStore, providers)
 	srv.SetPolicyEngine(policyEngine)
 
@@ -133,10 +168,8 @@ func main() {
 	pb.RegisterSchedulerServer(grpcServer, srv)
 	pb.RegisterEnvironmentServer(grpcServer, environment.NewServer(nil))
 
-	if objectStore != nil {
-		wsSrv := workspace.NewServer(objectStore, registry)
-		pb.RegisterWorkspaceServer(grpcServer, wsSrv)
-	}
+	wsSrv := workspace.NewServer(objectStore, registry)
+	pb.RegisterWorkspaceServer(grpcServer, wsSrv)
 
 	listener, err := net.Listen("tcp", cfg.SchedulerAddr())
 	if err != nil {
@@ -153,9 +186,14 @@ func main() {
 
 	go func() {
 		metricsAddr := ":9090"
-		logger.Info("metrics server listening", slog.String("addr", metricsAddr))
-		if err := http.ListenAndServe(metricsAddr, scheduler.MetricsHandler()); err != nil {
-			logger.Error("metrics server stopped", slog.String("error", err.Error()))
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", scheduler.MetricsHandler())
+		if diskStore != nil {
+			mux.HandleFunc("/storage/", diskStore.HTTPHandler())
+		}
+		logger.Info("http server listening", slog.String("addr", metricsAddr))
+		if err := http.ListenAndServe(metricsAddr, mux); err != nil {
+			logger.Error("http server stopped", slog.String("error", err.Error()))
 		}
 	}()
 

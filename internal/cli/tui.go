@@ -123,10 +123,19 @@ func NewTUICommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 				fmt.Println(subBar)
 				fmt.Println()
 
+				targetAddr := "127.0.0.1" + cfg.SchedulerAddr()
+				if cfg.OracleVMTailscaleHost != "" {
+					if strings.Contains(cfg.OracleVMTailscaleHost, ":") {
+						targetAddr = cfg.OracleVMTailscaleHost
+					} else {
+						targetAddr = cfg.OracleVMTailscaleHost + cfg.SchedulerAddr()
+					}
+				}
+
 				sepLine := strings.Repeat("-", min(w-2, 80))
 				fmt.Printf("%s-- CLUSTER / SCHEDULER %s%s\n", cDim, sepLine[min(len(sepLine), 23):], cReset)
 				fmt.Printf("/: Target: %s%s%s (Ping: %s%s%s)        %s[/] Search Cmds | [r] Refresh | [q] Quit%s\n\n",
-					cBold, cfg.SchedulerAddr(), cReset, cGreen, latency, cReset, cYellow, cReset)
+					cBold, targetAddr, cReset, cGreen, latency, cReset, cYellow, cReset)
 
 				if showSearch {
 					boxW := min(w-4, 76)
@@ -140,12 +149,33 @@ func NewTUICommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 					fmt.Printf("└%s┘\n\n", strings.Repeat("─", boxW))
 				}
 
-				hostName, _ := os.Hostname()
-				if len(hostName) > 12 {
-					hostName = hostName[:12]
+				clientHost, _ := os.Hostname()
+				if len(clientHost) > 10 {
+					clientHost = clientHost[:10]
 				}
 				cores := fmt.Sprintf("%d cores", runtime.NumCPU())
 				osArch := fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
+
+				peerBadge := "PEER"
+				peerNode := "waris-mac"
+				if cfg.OracleVMTailscaleHost != "" {
+					peerBadge = "VPS "
+					if strings.Contains(cfg.OracleVMTailscaleHost, "100.74.71.31") {
+						peerNode = "waris-mac"
+					} else {
+						peerNode = cfg.OracleVMTailscaleHost
+						if len(peerNode) > 10 {
+							peerNode = peerNode[:10]
+						}
+					}
+				} else {
+					peerNode = "local-node"
+				}
+
+				peerState := "Offline"
+				if isOnline {
+					peerState = "Ready"
+				}
 
 				if w >= 82 {
 					colW := (w - 6) / 2
@@ -165,7 +195,7 @@ func NewTUICommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 					fmt.Printf("│%s│ │%s│\n", formatBoxRow(compHdr, colW), formatBoxRow(peerHdr, colW))
 
 					row1Left := fmt.Sprintf("  %s GO %s packets-core", bgPink, cReset)
-					row1Right := fmt.Sprintf("  > %s PEER %s %-12s (Ready)", bgCyan, cReset, hostName)
+					row1Right := fmt.Sprintf("  > %s %s %s %-10s (%s)", bgCyan, peerBadge, cReset, peerNode, peerState)
 					fmt.Printf("│%s│ │%s│\n", formatBoxRow(row1Left, colW), formatBoxRow(row1Right, colW))
 
 					row2Left := fmt.Sprintf("  %s AND%s android-tools", bgBlue, cReset)
@@ -177,7 +207,10 @@ func NewTUICommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 					fmt.Printf("│%s│ │%s│\n", formatBoxRow(row3Left, colW), formatBoxRow(row3Right, colW))
 
 					row4Left := fmt.Sprintf("  Root: %s", truncateStr(topoRoot(topo), colW-10))
-					row4Right := fmt.Sprintf("  Local: %s (%s)", osArch, cores)
+					row4Right := fmt.Sprintf("  Client: %s (%s)", clientHost, cores)
+					if colW >= 42 {
+						row4Right = fmt.Sprintf("  Client: %s (%s, %s)", clientHost, osArch, cores)
+					}
 					fmt.Printf("│%s│ │%s│\n", formatBoxRow(row4Left, colW), formatBoxRow(row4Right, colW))
 
 					row5Left := fmt.Sprintf("  Sync Status: %s[ SYNCED ]%s", cGreen, cReset)
@@ -197,8 +230,8 @@ func NewTUICommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 					fmt.Printf("└%s┘\n", strings.Repeat("─", boxW))
 
 					fmt.Printf("┌─ %sPEER FLEET & QUEUE%s %s┐\n", cBold, cReset, strings.Repeat("─", max(0, boxW-20)))
-					fmt.Printf("│%s│\n", formatBoxRow(fmt.Sprintf("  > %s PEER %s %-12s (Ready)", bgCyan, cReset, hostName), boxW))
-					fmt.Printf("│%s│\n", formatBoxRow(fmt.Sprintf("  Local: %s (%s)", osArch, cores), boxW))
+					fmt.Printf("│%s│\n", formatBoxRow(fmt.Sprintf("  > %s %s %s %-10s (%s)", bgCyan, peerBadge, cReset, peerNode, peerState), boxW))
+					fmt.Printf("│%s│\n", formatBoxRow(fmt.Sprintf("  Client: %s (%s, %s)", clientHost, osArch, cores), boxW))
 					fmt.Printf("│%s│\n", formatBoxRow(fmt.Sprintf("  Docker Isolation: %s[ ACTIVE ]%s", cCyan, cReset), boxW))
 					fmt.Printf("└%s┘\n\n", strings.Repeat("─", boxW))
 				}

@@ -1,5 +1,7 @@
 bin/
 .env
+.env.local
+.env.*
 deploy/local.env
 *.db
 *.db-journal
