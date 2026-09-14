@@ -201,7 +201,11 @@ func (p *PolicyEngine) ClassifyCommand(cmd string) CommandCategory {
 		strings.HasPrefix(lower, "date") ||
 		strings.HasPrefix(lower, "hostname") ||
 		strings.HasPrefix(lower, "df") ||
-		strings.HasPrefix(lower, "ps") {
+		strings.HasPrefix(lower, "ps") ||
+		lower == "true" ||
+		lower == "false" ||
+		strings.HasPrefix(lower, "true ") ||
+		strings.HasPrefix(lower, "false ") {
 		return CategoryReadOnly
 	}
 
@@ -440,7 +444,7 @@ type ConsoleApprover struct {
 
 func NewConsoleApprover() *ConsoleApprover {
 	return &ConsoleApprover{
-		timeout: 60 * time.Second,
+		timeout: 120 * time.Second,
 		in:      os.Stdin,
 		out:     os.Stdout,
 	}
@@ -466,7 +470,7 @@ func (c *ConsoleApprover) RequestApproval(ctx context.Context, ec ExecutionConte
 	fmt.Fprintf(c.out, "Peer \033[1;36m%s\033[0m wants to run a non-whitelisted command:\n", user)
 	fmt.Fprintf(c.out, "  \033[1;37mCommand:\033[0m %s\n", ec.Command)
 	fmt.Fprintf(c.out, "  \033[1;37mAction:\033[0m  %s\n", ec.Action)
-	fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o (timeout 60s): ")
+	fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o (timeout 120s): ")
 
 	answerCh := make(chan string, 1)
 	errCh := make(chan error, 1)
