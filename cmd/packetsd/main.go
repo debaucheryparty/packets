@@ -122,16 +122,21 @@ func main() {
 	}
 
 	friendMode := os.Getenv("PACKETS_ROLE") == "friend"
+	autoApprove := os.Getenv("PACKETS_AUTO_APPROVE") == "true" || os.Getenv("PACKETS_AUTO_APPROVE") == "1"
 	for _, arg := range os.Args[1:] {
 		if arg == "--friend" {
 			friendMode = true
-			break
+		}
+		if arg == "--auto-approve" || arg == "--no-approval" || arg == "--trust-all" {
+			autoApprove = true
 		}
 	}
 
 	approvalMode := policy.ApprovalMode(os.Getenv("PACKETS_APPROVAL_MODE"))
 	if approvalMode == "" {
-		if friendMode {
+		if autoApprove {
+			approvalMode = policy.ApprovalNever
+		} else if friendMode {
 			approvalMode = policy.ApprovalAlways
 		} else {
 			approvalMode = policy.ApprovalNever
@@ -139,9 +144,11 @@ func main() {
 	}
 
 	policyEngine := policy.NewPolicyEngineWithStore(approvalMode, store)
-	if friendMode {
+	if friendMode && !autoApprove {
 		policyEngine.SetApprover(policy.NewConsoleApprover())
 		logger.Info("running in friend peer mode", slog.String("approval", "interactive"))
+	} else if autoApprove {
+		logger.Info("running with auto-approval enabled", slog.String("approval", "disabled"))
 	} else {
 		logger.Info("running in vps node mode", slog.String("approval", "auto"))
 	}

@@ -444,10 +444,16 @@ type ConsoleApprover struct {
 
 func NewConsoleApprover() *ConsoleApprover {
 	return &ConsoleApprover{
-		timeout: 120 * time.Second,
+		timeout: 0,
 		in:      os.Stdin,
 		out:     os.Stdout,
 	}
+}
+
+func (c *ConsoleApprover) SetTimeout(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.timeout = d
 }
 
 func (c *ConsoleApprover) SetIO(in io.Reader, out io.Writer) {
@@ -470,7 +476,11 @@ func (c *ConsoleApprover) RequestApproval(ctx context.Context, ec ExecutionConte
 	fmt.Fprintf(c.out, "Peer \033[1;36m%s\033[0m wants to run a non-whitelisted command:\n", user)
 	fmt.Fprintf(c.out, "  \033[1;37mCommand:\033[0m %s\n", ec.Command)
 	fmt.Fprintf(c.out, "  \033[1;37mAction:\033[0m  %s\n", ec.Action)
-	fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o (timeout 120s): ")
+	if c.timeout > 0 {
+		fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o (timeout %s): ", c.timeout)
+	} else {
+		fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o: ")
+	}
 
 	answerCh := make(chan string, 1)
 	errCh := make(chan error, 1)
@@ -485,14 +495,18 @@ func (c *ConsoleApprover) RequestApproval(ctx context.Context, ec ExecutionConte
 		answerCh <- strings.TrimSpace(line)
 	}()
 
-	timeoutTimer := time.NewTimer(c.timeout)
-	defer timeoutTimer.Stop()
+	var timeoutCh <-chan time.Time
+	if c.timeout > 0 {
+		timer := time.NewTimer(c.timeout)
+		defer timer.Stop()
+		timeoutCh = timer.C
+	}
 
 	select {
 	case <-ctx.Done():
 		fmt.Fprintf(c.out, "\n\033[31mRequest cancelled by client.\033[0m\n")
 		return false, false, ctx.Err()
-	case <-timeoutTimer.C:
+	case <-timeoutCh:
 		fmt.Fprintf(c.out, "\n\033[31mApproval timed out (no response).\033[0m\n")
 		return false, false, errors.New("approval timed out")
 	case err := <-errCh:
