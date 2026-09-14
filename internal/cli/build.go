@@ -24,6 +24,7 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	}
 
 	cmd.Flags().String("runner", "", "Runner: docker, github, local")
+	cmd.Flags().String("toolchain", "", "Explicit toolchain name: go, rust, java, etc.")
 	cmd.Flags().String("source", "", "Source mode: workspace, git")
 	cmd.Flags().String("ref", "", "Git ref for --source=git")
 	cmd.Flags().StringArray("artifact", nil, "Artifact paths to collect")
@@ -36,6 +37,7 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		ctx := cmd.Context()
 
 		runnerFlag, _ := cmd.Flags().GetString("runner")
+		toolchainFlag, _ := cmd.Flags().GetString("toolchain")
 		sourceFlag, _ := cmd.Flags().GetString("source")
 		artifactFlag, _ := cmd.Flags().GetStringArray("artifact")
 		waitFlag, _ := cmd.Flags().GetBool("wait")
@@ -70,11 +72,20 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		}
 
 		registry := toolchain.NewRegistry()
-		detector := shim.NewDetector(registry)
-
-		def, err := detector.DetectToolchain(pwd)
-		if err != nil {
-			return fmt.Errorf("build failed: %w", err)
+		var def apitypes.ToolchainDef
+		if toolchainFlag != "" {
+			var ok bool
+			def, ok = registry.Lookup(apitypes.Toolchain(toolchainFlag))
+			if !ok {
+				return fmt.Errorf("unknown toolchain: %s", toolchainFlag)
+			}
+		} else {
+			detector := shim.NewDetector(registry)
+			var detectErr error
+			def, detectErr = detector.DetectToolchain(pwd)
+			if detectErr != nil {
+				return fmt.Errorf("build failed: %w", detectErr)
+			}
 		}
 
 		if len(artifactFlag) == 0 && projCfg != nil && len(projCfg.Build.Artifacts) > 0 {

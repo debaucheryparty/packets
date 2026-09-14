@@ -117,6 +117,16 @@ func (r *Registry) Detect(dir string) (apitypes.ToolchainDef, error) {
 	}
 
 	if len(matches) > 1 {
+		var nonC []apitypes.ToolchainDef
+		for _, m := range matches {
+			if m.Name != apitypes.ToolchainC && m.Name != apitypes.ToolchainCPP {
+				nonC = append(nonC, m)
+			}
+		}
+		if len(nonC) > 0 {
+			matches = nonC
+		}
+
 		firstBackend := matches[0].Backend
 		for i := 1; i < len(matches); i++ {
 			if matches[i].Backend != firstBackend {
