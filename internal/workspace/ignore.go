@@ -28,6 +28,7 @@ var defaultIgnorePatterns = []string{
 	".packets/",
 	".packets_snapshot",
 	".packets_manifest.json*",
+	".kilo/",
 	".DS_Store",
 	"Thumbs.db",
 }

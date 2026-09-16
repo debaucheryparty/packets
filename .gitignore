@@ -5,6 +5,7 @@ bin/
 .packets/
 .packets_snapshot
 .packets_manifest.json*
+.kilo/
 deploy/local.env
 *.db
 *.db-journal
