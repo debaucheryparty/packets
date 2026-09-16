@@ -122,6 +122,16 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			return nil
 		}
 
+		if len(args) == 0 {
+			if def.LocalCommand != "" {
+				args = append([]string{def.LocalCommand}, def.DefaultArgs...)
+			} else {
+				args = def.DefaultArgs
+			}
+		} else if def.LocalCommand != "" && args[0] != def.LocalCommand {
+			args = append([]string{def.LocalCommand}, args...)
+		}
+
 		return executeViaScheduler(ctx, cfg, logger, def, pwd, args, runner, sourceMode, artifactFlag, waitFlag, forceFlag)
 	}
 

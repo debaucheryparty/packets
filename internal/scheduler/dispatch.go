@@ -171,6 +171,10 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req ap
 			errMsg := ""
 			if err != nil {
 				errMsg = err.Error()
+			} else if result.Error != nil {
+				errMsg = fmt.Sprintf("exited %d: %v", result.ExitCode, result.Error)
+			} else if strings.TrimSpace(result.Stderr) != "" {
+				errMsg = fmt.Sprintf("exited %d: %s", result.ExitCode, strings.TrimSpace(result.Stderr))
 			} else {
 				errMsg = fmt.Sprintf("exited %d", result.ExitCode)
 			}

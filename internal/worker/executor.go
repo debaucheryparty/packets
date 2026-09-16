@@ -161,6 +161,10 @@ func (e *Executor) Execute(ctx context.Context, job apitypes.Job) (apitypes.Exec
 			if def, ok := e.registry.Lookup(job.Toolchain); ok {
 				command = append([]string{def.LocalCommand}, def.DefaultArgs...)
 			}
+		} else if def, ok := e.registry.Lookup(job.Toolchain); ok && def.LocalCommand != "" {
+			if command[0] != def.LocalCommand {
+				command = append([]string{def.LocalCommand}, command...)
+			}
 		}
 
 		logFn := func(line string) {
@@ -209,6 +213,10 @@ func (e *Executor) executeHost(ctx context.Context, job apitypes.Job, srcDir str
 	if len(command) == 0 {
 		if def, ok := e.registry.Lookup(job.Toolchain); ok {
 			command = append([]string{def.LocalCommand}, def.DefaultArgs...)
+		}
+	} else if def, ok := e.registry.Lookup(job.Toolchain); ok && def.LocalCommand != "" {
+		if command[0] != def.LocalCommand {
+			command = append([]string{def.LocalCommand}, command...)
 		}
 	}
 	if len(command) == 0 {
