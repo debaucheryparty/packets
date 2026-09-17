@@ -472,14 +472,14 @@ func (c *ConsoleApprover) RequestApproval(ctx context.Context, ec ExecutionConte
 		user = "remote-peer"
 	}
 
-	fmt.Fprintf(c.out, "\n\033[1;33m[packetsd :: FRIEND APPROVAL REQUIRED]\033[0m\n")
-	fmt.Fprintf(c.out, "Peer \033[1;36m%s\033[0m wants to run a non-whitelisted command:\n", user)
-	fmt.Fprintf(c.out, "  \033[1;37mCommand:\033[0m %s\n", ec.Command)
-	fmt.Fprintf(c.out, "  \033[1;37mAction:\033[0m  %s\n", ec.Action)
+	_, _ = fmt.Fprintf(c.out, "\n\033[1;33m[packetsd :: FRIEND APPROVAL REQUIRED]\033[0m\n")
+	_, _ = fmt.Fprintf(c.out, "Peer \033[1;36m%s\033[0m wants to run a non-whitelisted command:\n", user)
+	_, _ = fmt.Fprintf(c.out, "  \033[1;37mCommand:\033[0m %s\n", ec.Command)
+	_, _ = fmt.Fprintf(c.out, "  \033[1;37mAction:\033[0m  %s\n", ec.Action)
 	if c.timeout > 0 {
-		fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o (timeout %s): ", c.timeout)
+		_, _ = fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o (timeout %s): ", c.timeout)
 	} else {
-		fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o: ")
+		_, _ = fmt.Fprintf(c.out, "Allow execution? [\033[1;32my\033[0m]es / [\033[1;34ma\033[0m]lways whitelist / [\033[1;31mn\033[0m]o: ")
 	}
 
 	answerCh := make(chan string, 1)
@@ -504,24 +504,24 @@ func (c *ConsoleApprover) RequestApproval(ctx context.Context, ec ExecutionConte
 
 	select {
 	case <-ctx.Done():
-		fmt.Fprintf(c.out, "\n\033[31mRequest cancelled by client.\033[0m\n")
+		_, _ = fmt.Fprintf(c.out, "\n\033[31mRequest cancelled by client.\033[0m\n")
 		return false, false, ctx.Err()
 	case <-timeoutCh:
-		fmt.Fprintf(c.out, "\n\033[31mApproval timed out (no response).\033[0m\n")
+		_, _ = fmt.Fprintf(c.out, "\n\033[31mApproval timed out (no response).\033[0m\n")
 		return false, false, errors.New("approval timed out")
 	case err := <-errCh:
 		return false, false, err
 	case ans := <-answerCh:
 		lower := strings.ToLower(ans)
 		if lower == "y" || lower == "yes" {
-			fmt.Fprintf(c.out, "\033[32mApproved for this run.\033[0m\n\n")
+			_, _ = fmt.Fprintf(c.out, "\033[32mApproved for this run.\033[0m\n\n")
 			return true, false, nil
 		}
 		if lower == "a" || lower == "always" {
-			fmt.Fprintf(c.out, "\033[32mApproved and whitelisted for this session.\033[0m\n\n")
+			_, _ = fmt.Fprintf(c.out, "\033[32mApproved and whitelisted for this session.\033[0m\n\n")
 			return true, true, nil
 		}
-		fmt.Fprintf(c.out, "\033[31mRejected by owner.\033[0m\n\n")
+		_, _ = fmt.Fprintf(c.out, "\033[31mRejected by owner.\033[0m\n\n")
 		return false, false, nil
 	}
 }
