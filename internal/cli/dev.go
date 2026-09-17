@@ -7,7 +7,7 @@ import (
 
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/environment"
-	"github.com/debaucheryparty/packets/internal/instructions"
+	"github.com/debaucheryparty/packets/internal/project"
 	"github.com/spf13/cobra"
 )
 
@@ -76,7 +76,7 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			fmt.Println()
 
 			fmt.Println("Configuring AI Agent Integration...")
-			if err := instructions.GenerateInstructions(absDir); err != nil {
+			if err := project.GenerateInstructions(absDir); err != nil {
 				logger.WarnContext(ctx, "failed generating instructions", slog.String("err", err.Error()))
 			} else {
 				fmt.Println("  ✓ Generated AGENTS.md")

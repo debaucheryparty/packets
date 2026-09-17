@@ -20,17 +20,7 @@ func UploadWorkspace(ctx context.Context, conn *grpc.ClientConn, dir string, for
 		return "", fmt.Errorf("UploadWorkspace scan: %w", err)
 	}
 
-	pbFiles := make([]*pb.FileEntry, len(manifest.Files))
-	for i, f := range manifest.Files {
-		pbFiles[i] = &pb.FileEntry{
-			Path:  f.Path,
-			Hash:  f.Hash,
-			Size:  f.Size,
-			Mode:  f.Mode,
-			IsDir: f.IsDir,
-			Link:  f.Link,
-		}
-	}
+	pbFiles := manifestToProto(manifest)
 
 	diffResp, err := client.Diff(ctx, &pb.WorkspaceManifest{
 		RootHash: manifest.RootHash,
@@ -95,7 +85,8 @@ func UploadWorkspace(ctx context.Context, conn *grpc.ClientConn, dir string, for
 	return commitResp.SnapshotRef, nil
 }
 
-func manifestToProto(m *apitypes.WorkspaceManifest) []*pb.FileEntry { //nolint:unused
+// manifestToProto converts a domain WorkspaceManifest to protobuf FileEntry slice.
+func manifestToProto(m *apitypes.WorkspaceManifest) []*pb.FileEntry {
 	out := make([]*pb.FileEntry, len(m.Files))
 	for i, f := range m.Files {
 		out[i] = &pb.FileEntry{

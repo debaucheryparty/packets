@@ -69,7 +69,6 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 
 			variant, _ := cmd.Flags().GetString("variant")
 			waitFlag, _ := cmd.Flags().GetBool("wait")
-			providerFlag, _ := cmd.Flags().GetString("provider")
 			forceFlag, _ := cmd.Flags().GetBool("force")
 			benchmarkFlag, _ := cmd.Flags().GetBool("benchmark")
 
@@ -91,8 +90,6 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 			}
 			uploadDur := time.Since(uploadStart)
 			fmt.Printf("✓ Workspace uploaded (ref: %s, duration: %s)\n\n", snapshotRef, uploadDur.Round(time.Millisecond))
-
-			_ = providerFlag
 
 			fmt.Println("Collecting build environment fingerprint...")
 			cacheInputs, err := android.CollectCacheInputs(ctx, proj.Root, variant, snapshotRef)

@@ -96,12 +96,12 @@ func (d *Dispatcher) Submit(ctx context.Context, req apitypes.BuildRequest, cach
 	}
 
 	JobsSubmittedTotal.WithLabelValues(string(req.Toolchain), "false").Inc()
-	go d.dispatchAsync(context.Background(), job, req)
+	go d.dispatchAsync(context.Background(), job)
 
 	return jobID, false, nil
 }
 
-func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job, req apitypes.BuildRequest) { //nolint:unparam
+func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job) {
 	defer func() {
 		if d.limiter != nil {
 			d.limiter.Release(job.Owner)
@@ -208,15 +208,7 @@ func (d *Dispatcher) RecoverPendingJobs(ctx context.Context) error {
 	}
 	for _, job := range jobs {
 		go func(j apitypes.Job) {
-			d.dispatchAsync(ctx, j, apitypes.BuildRequest{
-				Toolchain:     j.Toolchain,
-				Runner:        j.Runner,
-				SourceMode:    j.SourceMode,
-				SnapshotRef:   j.SnapshotRef,
-				CommandArgs:   j.CommandArgs,
-				ArtifactPaths: j.ArtifactPaths,
-				DockerImage:   j.Image,
-			})
+			d.dispatchAsync(ctx, j)
 		}(job)
 	}
 	return nil

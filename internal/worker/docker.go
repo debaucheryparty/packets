@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -277,13 +276,4 @@ func (d *DockerClient) LogsContainer(ctx context.Context, containerID string) ([
 		return nil, fmt.Errorf("DockerClient.LogsContainer %q: %w", containerID, err)
 	}
 	return out, nil
-}
-
-func trimNL(s string) string { //nolint:unused
-	return strings.TrimRight(s, "\r\n")
-}
-
-func parseExitCode(s string) int { //nolint:unused
-	n, _ := strconv.Atoi(strings.TrimSpace(s))
-	return n
 }

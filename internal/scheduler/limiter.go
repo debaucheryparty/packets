@@ -19,11 +19,10 @@ type userState struct {
 }
 
 type QuotaLimiter struct {
-	mu           sync.Mutex
-	maxActive    int
-	ratePerMin   float64
-	users        map[string]*userState
-	cleanupTimer *time.Timer //nolint:unused
+	mu         sync.Mutex
+	maxActive  int
+	ratePerMin float64
+	users      map[string]*userState
 }
 
 func NewQuotaLimiter(maxActive int, ratePerMin int) *QuotaLimiter {

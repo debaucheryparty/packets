@@ -1,7 +1,6 @@
 package workspace
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 
@@ -30,23 +29,4 @@ func readChunkByHash(workspaceDir string, manifest *apitypes.WorkspaceManifest, 
 
 func ReadChunkByHash(workspaceDir string, manifest *apitypes.WorkspaceManifest, hash string) ([]byte, error) {
 	return readChunkByHash(workspaceDir, manifest, hash)
-}
-
-func readChunkByHashReader(workspaceDir string, manifest *apitypes.WorkspaceManifest, hash string) (io.ReadCloser, int64, error) { //nolint:unused
-	idx := buildHashIndex(manifest)
-	relPath, ok := idx[hash]
-	if !ok {
-		return nil, 0, nil
-	}
-	absPath := filepath.Join(workspaceDir, filepath.FromSlash(relPath))
-	f, err := os.Open(absPath)
-	if err != nil {
-		return nil, 0, err
-	}
-	info, err := f.Stat()
-	if err != nil {
-		_ = f.Close()
-		return nil, 0, err
-	}
-	return f, info.Size(), nil
 }

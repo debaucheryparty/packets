@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-func createTarGzPipe(srcDir string, paths []string) (io.Reader, io.Closer, error) { //nolint:unparam
+func createTarGzPipe(srcDir string, paths []string) (io.Reader, io.Closer) {
 	pr, pw := io.Pipe()
 	go func() {
 		gz := gzip.NewWriter(pw)
@@ -82,7 +82,7 @@ func createTarGzPipe(srcDir string, paths []string) (io.Reader, io.Closer, error
 		_ = gz.Close()
 		pw.CloseWithError(werr)
 	}()
-	return pr, pw, nil
+	return pr, pw
 }
 
 func addTreeToTar(tw *tar.Writer, base, dirPath string, seen map[string]bool) error {

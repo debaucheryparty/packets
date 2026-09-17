@@ -66,18 +66,25 @@ func ResolveADBPath() string {
 	if p, err := exec.LookPath("adb"); err == nil {
 		return p
 	}
-	candidates := []string{
-		filepath.Join(os.Getenv("LOCALAPPDATA"), "Android", "Sdk", "platform-tools", "adb.exe"),
-		filepath.Join(os.Getenv("ANDROID_HOME"), "platform-tools", "adb.exe"),
-		filepath.Join(os.Getenv("ANDROID_HOME"), "platform-tools", "adb"),
-		filepath.Join(os.Getenv("HOME"), "Android", "Sdk", "platform-tools", "adb"),
-		filepath.Join(os.Getenv("HOME"), "android-sdk", "platform-tools", "adb"),
+	var candidates []string
+	if val := os.Getenv("LOCALAPPDATA"); val != "" {
+		candidates = append(candidates, filepath.Join(val, "Android", "Sdk", "platform-tools", "adb.exe"))
+	}
+	if val := os.Getenv("ANDROID_HOME"); val != "" {
+		candidates = append(candidates,
+			filepath.Join(val, "platform-tools", "adb.exe"),
+			filepath.Join(val, "platform-tools", "adb"),
+		)
+	}
+	if val := os.Getenv("HOME"); val != "" {
+		candidates = append(candidates,
+			filepath.Join(val, "Android", "Sdk", "platform-tools", "adb"),
+			filepath.Join(val, "android-sdk", "platform-tools", "adb"),
+		)
 	}
 	for _, c := range candidates {
-		if c != "" {
-			if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
-				return c
-			}
+		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+			return c
 		}
 	}
 	return "adb"

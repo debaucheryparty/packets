@@ -12,8 +12,33 @@ import (
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/workspace"
 	pb "github.com/debaucheryparty/packets/proto/v1"
+	"github.com/spf13/cobra"
 )
 
+// NewArtifactCommand creates the command to manage and download build artifacts.
+func NewArtifactCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "artifact",
+		Short: "Manage build artifacts",
+	}
+
+	pullCmd := &cobra.Command{
+		Use:   "pull <job-id>",
+		Short: "Download artifacts for a job",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			jobID := args[0]
+			output, _ := cmd.Flags().GetString("output")
+
+			return PullAndExtractArtifact(cmd.Context(), cfg, logger, jobID, output)
+		},
+	}
+	pullCmd.Flags().StringP("output", "o", ".", "Output directory (defaults to current directory)")
+	cmd.AddCommand(pullCmd)
+	return cmd
+}
+
+// PullAndExtractArtifact fetches the remote artifact stream for jobID and extracts it into destDir.
 func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slog.Logger, jobID, destDir string) error {
 	if destDir == "" {
 		destDir = "."

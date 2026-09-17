@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/joho/godotenv"
@@ -54,7 +55,7 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 	home, _ := os.UserHomeDir()
 	globalConfig := ""
 	if home != "" {
-		globalConfig = home + "/.packets/config.env"
+		globalConfig = filepath.Join(home, ".packets", "config.env")
 	}
 	_ = godotenv.Load(".env.local", ".env", globalConfig, "/etc/packets/env")
 

@@ -357,10 +357,7 @@ func (e *Executor) resolveImage(job apitypes.Job) string {
 }
 
 func (e *Executor) collectArtifacts(ctx context.Context, srcDir string, paths []string, jobID, owner string) (apitypes.ArtifactRef, error) {
-	pr, pw, err := createTarGzPipe(srcDir, paths)
-	if err != nil {
-		return "", fmt.Errorf("collectArtifacts tar: %w", err)
-	}
+	pr, pw := createTarGzPipe(srcDir, paths)
 
 	key := fmt.Sprintf("%s/artifacts/%s/output.tar.gz", owner, jobID)
 	if err := e.store.Upload(ctx, key, pr, -1); err != nil {
