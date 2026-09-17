@@ -997,13 +997,14 @@ func newAndroidConnectCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 			target := fmt.Sprintf("%s:%d", host, port)
 			fmt.Printf("Connecting local ADB to remote emulator at %s...\n", target)
 
-			out, err := exec.CommandContext(ctx, "adb", "connect", target).CombinedOutput()
+			adbBin := android.ResolveADBPath()
+			out, err := exec.CommandContext(ctx, adbBin, "connect", target).CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("adb connect %s: %w\n%s", target, err, string(out))
 			}
 			fmt.Println(strings.TrimSpace(string(out)))
 
-			devicesOut, err := exec.CommandContext(ctx, "adb", "devices").CombinedOutput()
+			devicesOut, err := exec.CommandContext(ctx, adbBin, "devices").CombinedOutput()
 			if err == nil {
 				fmt.Printf("\nActive ADB devices:\n%s\n", string(devicesOut))
 			}

@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -60,8 +62,29 @@ type ExecADBClient struct {
 	adbPath string
 }
 
+func ResolveADBPath() string {
+	if p, err := exec.LookPath("adb"); err == nil {
+		return p
+	}
+	candidates := []string{
+		filepath.Join(os.Getenv("LOCALAPPDATA"), "Android", "Sdk", "platform-tools", "adb.exe"),
+		filepath.Join(os.Getenv("ANDROID_HOME"), "platform-tools", "adb.exe"),
+		filepath.Join(os.Getenv("ANDROID_HOME"), "platform-tools", "adb"),
+		filepath.Join(os.Getenv("HOME"), "Android", "Sdk", "platform-tools", "adb"),
+		filepath.Join(os.Getenv("HOME"), "android-sdk", "platform-tools", "adb"),
+	}
+	for _, c := range candidates {
+		if c != "" {
+			if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+				return c
+			}
+		}
+	}
+	return "adb"
+}
+
 func NewExecADBClient() *ExecADBClient {
-	return &ExecADBClient{adbPath: "adb"}
+	return &ExecADBClient{adbPath: ResolveADBPath()}
 }
 
 func (a *ExecADBClient) adb(ctx context.Context, args ...string) *exec.Cmd {
