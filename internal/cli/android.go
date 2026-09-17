@@ -163,7 +163,7 @@ func variantToArtifact(v string) string {
 	return "app/build/outputs/apk/debug/*.apk"
 }
 
-func newAndroidDevicesCommand(_ *config.Config, logger *slog.Logger) *cobra.Command {
+func newAndroidDevicesCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "devices",
 		Short: "List Android devices/emulators on the remote node",
@@ -172,6 +172,42 @@ func newAndroidDevicesCommand(_ *config.Config, logger *slog.Logger) *cobra.Comm
 			adb := android.NewExecADBClient()
 			devices, err := adb.Devices(cmd.Context())
 			if err != nil {
+				conn, dialErr := DialScheduler(cmd.Context(), cfg)
+				if dialErr == nil {
+					defer func() { _ = conn.Close() }()
+					client := pb.NewSchedulerClient(conn)
+					cacheKey := fmt.Sprintf("exec:adb-devices:%d", time.Now().UnixNano())
+					resp, submitErr := client.SubmitJob(cmd.Context(), &pb.SubmitJobRequest{
+						CacheKey:    cacheKey,
+						Toolchain:   string(apitypes.ToolchainExec),
+						Runner:      string(apitypes.RunnerHost),
+						CommandArgs: []string{"adb", "devices"},
+						SourceMode:  string(apitypes.SourceModeWorkspace),
+					})
+					if submitErr == nil {
+						stream, streamErr := client.StreamJobLogs(cmd.Context(), &pb.StreamJobLogsRequest{JobId: resp.JobId})
+						if streamErr == nil {
+							var logLines []string
+							for {
+								msg, recvErr := stream.Recv()
+								if recvErr != nil {
+									break
+								}
+								logLines = append(logLines, msg.Content)
+							}
+							remoteDevices := android.ParseDevicesOutput(strings.Join(logLines, "\n"))
+							if len(remoteDevices) == 0 {
+								fmt.Println("No remote Android devices connected.")
+								return nil
+							}
+							fmt.Printf("%-20s%-12s%s\n", "DEVICE", "TYPE", "STATUS")
+							for _, d := range remoteDevices {
+								fmt.Printf("%-20s%-12s%s\n", d.Serial, string(d.Type), d.Status)
+							}
+							return nil
+						}
+					}
+				}
 				return fmt.Errorf("adb devices: %w", err)
 			}
 			if len(devices) == 0 {
@@ -367,7 +403,7 @@ func newAndroidTestCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comma
 	return cmd
 }
 
-func newAndroidEmulatorCommand(_ *config.Config, logger *slog.Logger) *cobra.Command {
+func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "emulator",
 		Short: "Manage the remote Android emulator",
@@ -438,6 +474,47 @@ func newAndroidEmulatorCommand(_ *config.Config, logger *slog.Logger) *cobra.Com
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			infos, err := mgr.List(cmd.Context())
 			if err != nil {
+				conn, dialErr := DialScheduler(cmd.Context(), cfg)
+				if dialErr == nil {
+					defer func() { _ = conn.Close() }()
+					client := pb.NewSchedulerClient(conn)
+					cacheKey := fmt.Sprintf("exec:adb-emulator-status:%d", time.Now().UnixNano())
+					resp, submitErr := client.SubmitJob(cmd.Context(), &pb.SubmitJobRequest{
+						CacheKey:    cacheKey,
+						Toolchain:   string(apitypes.ToolchainExec),
+						Runner:      string(apitypes.RunnerHost),
+						CommandArgs: []string{"adb", "devices"},
+						SourceMode:  string(apitypes.SourceModeWorkspace),
+					})
+					if submitErr == nil {
+						stream, streamErr := client.StreamJobLogs(cmd.Context(), &pb.StreamJobLogsRequest{JobId: resp.JobId})
+						if streamErr == nil {
+							var logLines []string
+							for {
+								msg, recvErr := stream.Recv()
+								if recvErr != nil {
+									break
+								}
+								logLines = append(logLines, msg.Content)
+							}
+							remoteDevices := android.ParseDevicesOutput(strings.Join(logLines, "\n"))
+							var emulators []android.Device
+							for _, d := range remoteDevices {
+								if d.Type == android.DeviceTypeEmulator {
+									emulators = append(emulators, d)
+								}
+							}
+							if len(emulators) == 0 {
+								fmt.Println("No running emulators on remote node.")
+								return nil
+							}
+							for _, e := range emulators {
+								fmt.Printf("%-20s  %s\n", e.Serial, e.Status)
+							}
+							return nil
+						}
+					}
+				}
 				return fmt.Errorf("list emulators: %w", err)
 			}
 			if len(infos) == 0 {

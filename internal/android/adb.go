@@ -89,9 +89,12 @@ func (a *ExecADBClient) Devices(ctx context.Context) ([]Device, error) {
 	if err != nil {
 		return nil, fmt.Errorf("adb devices: %w", err)
 	}
+	return ParseDevicesOutput(string(out)), nil
+}
 
+func ParseDevicesOutput(output string) []Device {
 	var devices []Device
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "List of devices") || line == "" {
@@ -103,7 +106,7 @@ func (a *ExecADBClient) Devices(ctx context.Context) ([]Device, error) {
 		}
 		devices = append(devices, ClassifyDevice(parts[0], parts[1]))
 	}
-	return devices, nil
+	return devices
 }
 
 func (a *ExecADBClient) Install(ctx context.Context, serial, apkPath string) error {
