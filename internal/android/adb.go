@@ -37,7 +37,7 @@ type Device struct {
 
 func ClassifyDevice(serial, state string) Device {
 	dType := DeviceTypeUSB
-	if strings.HasPrefix(serial, "emulator-") {
+	if strings.HasPrefix(serial, "emulator-") || strings.HasPrefix(serial, "localhost:") || strings.HasPrefix(serial, "127.0.0.1:") {
 		dType = DeviceTypeEmulator
 	} else if strings.Contains(serial, ":") || strings.HasPrefix(serial, "remote-") || strings.HasSuffix(serial, "-remote") {
 		dType = DeviceTypeNetwork

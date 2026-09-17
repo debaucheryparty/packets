@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/android"
@@ -190,15 +191,48 @@ func execRemoteCommand(ctx context.Context, cfg *config.Config, args ...string) 
 		return nil, fmt.Errorf("stream logs: %w", err)
 	}
 
+	var mu sync.Mutex
 	var lines []string
-	for {
-		msg, recvErr := stream.Recv()
-		if recvErr != nil {
-			break
+	doneCh := make(chan struct{})
+
+	go func() {
+		defer close(doneCh)
+		for {
+			msg, recvErr := stream.Recv()
+			if recvErr != nil {
+				break
+			}
+			mu.Lock()
+			lines = append(lines, msg.Content)
+			mu.Unlock()
 		}
-		lines = append(lines, msg.Content)
+	}()
+
+	ticker := time.NewTicker(300 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-doneCh:
+			mu.Lock()
+			res := append([]string(nil), lines...)
+			mu.Unlock()
+			return res, nil
+		case <-ticker.C:
+			st, err := client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: resp.JobId})
+			if err == nil {
+				if st.State == pb.JobState_JOB_STATE_SUCCEEDED || st.State == pb.JobState_JOB_STATE_FAILED {
+					time.Sleep(150 * time.Millisecond)
+					mu.Lock()
+					res := append([]string(nil), lines...)
+					mu.Unlock()
+					return res, nil
+				}
+			}
+		}
 	}
-	return lines, nil
 }
 
 func streamRemoteCommand(ctx context.Context, cfg *config.Config, w io.Writer, args ...string) error {

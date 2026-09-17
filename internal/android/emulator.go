@@ -183,7 +183,7 @@ func (m *AVDEmulatorManager) List(ctx context.Context) ([]EmulatorInfo, error) {
 	}
 	var infos []EmulatorInfo
 	for _, d := range devices {
-		if strings.HasPrefix(d.Serial, "emulator-") {
+		if d.Type == DeviceTypeEmulator || strings.HasPrefix(d.Serial, "emulator-") {
 			state := EmulatorStateStarting
 			if d.State == "device" {
 				state = EmulatorStateReady
