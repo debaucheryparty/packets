@@ -35,8 +35,9 @@ func NewAndroidCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		newAndroidTestCommand(cfg, logger),
 		newAndroidEmulatorCommand(cfg, logger),
 		newAndroidDevCommand(cfg, logger),
-		newAndroidNodeCheckCommand(logger),
+		newAndroidNodeCheckCommand(cfg, logger),
 		newAndroidConnectCommand(cfg, logger),
+		newAndroidSetupCommand(cfg, logger),
 	)
 	return cmd
 }
@@ -163,6 +164,98 @@ func variantToArtifact(v string) string {
 	return "app/build/outputs/apk/debug/*.apk"
 }
 
+func execRemoteCommand(ctx context.Context, cfg *config.Config, args ...string) ([]string, error) {
+	conn, err := DialScheduler(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("dial scheduler: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	client := pb.NewSchedulerClient(conn)
+	cacheKey := fmt.Sprintf("exec:remote-cmd:%d", time.Now().UnixNano())
+	resp, err := client.SubmitJob(ctx, &pb.SubmitJobRequest{
+		CacheKey:    cacheKey,
+		Toolchain:   string(apitypes.ToolchainExec),
+		Runner:      string(apitypes.RunnerHost),
+		CommandArgs: args,
+		SourceMode:  string(apitypes.SourceModeWorkspace),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("submit job: %w", err)
+	}
+
+	stream, err := client.StreamJobLogs(ctx, &pb.StreamJobLogsRequest{JobId: resp.JobId})
+	if err != nil {
+		return nil, fmt.Errorf("stream logs: %w", err)
+	}
+
+	var lines []string
+	for {
+		msg, recvErr := stream.Recv()
+		if recvErr != nil {
+			break
+		}
+		lines = append(lines, msg.Content)
+	}
+	return lines, nil
+}
+
+func streamRemoteCommand(ctx context.Context, cfg *config.Config, w io.Writer, args ...string) error {
+	conn, err := DialScheduler(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("dial scheduler: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	client := pb.NewSchedulerClient(conn)
+	cacheKey := fmt.Sprintf("exec:remote-stream:%d", time.Now().UnixNano())
+	resp, err := client.SubmitJob(ctx, &pb.SubmitJobRequest{
+		CacheKey:    cacheKey,
+		Toolchain:   string(apitypes.ToolchainExec),
+		Runner:      string(apitypes.RunnerHost),
+		CommandArgs: args,
+		SourceMode:  string(apitypes.SourceModeWorkspace),
+	})
+	if err != nil {
+		return fmt.Errorf("submit job: %w", err)
+	}
+
+	stream, err := client.StreamJobLogs(ctx, &pb.StreamJobLogsRequest{JobId: resp.JobId})
+	if err != nil {
+		return fmt.Errorf("stream logs: %w", err)
+	}
+
+	for {
+		msg, recvErr := stream.Recv()
+		if recvErr != nil {
+			break
+		}
+		if w != nil {
+			_, _ = fmt.Fprintln(w, msg.Content)
+		}
+	}
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			st, err := client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: resp.JobId})
+			if err != nil {
+				return err
+			}
+			if st.State == pb.JobState_JOB_STATE_SUCCEEDED {
+				return nil
+			}
+			if st.State == pb.JobState_JOB_STATE_FAILED {
+				return fmt.Errorf("remote execution failed: %s", st.ErrorMessage)
+			}
+		}
+	}
+}
+
 func newAndroidDevicesCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "devices",
@@ -172,43 +265,12 @@ func newAndroidDevicesCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 			adb := android.NewExecADBClient()
 			devices, err := adb.Devices(cmd.Context())
 			if err != nil {
-				conn, dialErr := DialScheduler(cmd.Context(), cfg)
-				if dialErr == nil {
-					defer func() { _ = conn.Close() }()
-					client := pb.NewSchedulerClient(conn)
-					cacheKey := fmt.Sprintf("exec:adb-devices:%d", time.Now().UnixNano())
-					resp, submitErr := client.SubmitJob(cmd.Context(), &pb.SubmitJobRequest{
-						CacheKey:    cacheKey,
-						Toolchain:   string(apitypes.ToolchainExec),
-						Runner:      string(apitypes.RunnerHost),
-						CommandArgs: []string{"adb", "devices"},
-						SourceMode:  string(apitypes.SourceModeWorkspace),
-					})
-					if submitErr == nil {
-						stream, streamErr := client.StreamJobLogs(cmd.Context(), &pb.StreamJobLogsRequest{JobId: resp.JobId})
-						if streamErr == nil {
-							var logLines []string
-							for {
-								msg, recvErr := stream.Recv()
-								if recvErr != nil {
-									break
-								}
-								logLines = append(logLines, msg.Content)
-							}
-							remoteDevices := android.ParseDevicesOutput(strings.Join(logLines, "\n"))
-							if len(remoteDevices) == 0 {
-								fmt.Println("No remote Android devices connected.")
-								return nil
-							}
-							fmt.Printf("%-20s%-12s%s\n", "DEVICE", "TYPE", "STATUS")
-							for _, d := range remoteDevices {
-								fmt.Printf("%-20s%-12s%s\n", d.Serial, string(d.Type), d.Status)
-							}
-							return nil
-						}
-					}
+				lines, remErr := execRemoteCommand(cmd.Context(), cfg, "adb", "devices")
+				if remErr == nil {
+					devices = android.ParseDevicesOutput(strings.Join(lines, "\n"))
+				} else {
+					return fmt.Errorf("adb devices: %w", err)
 				}
-				return fmt.Errorf("adb devices: %w", err)
 			}
 			if len(devices) == 0 {
 				fmt.Println("No devices connected.")
@@ -309,29 +371,55 @@ func findAPK(dir, variant string) (string, error) {
 	return matches[0], nil
 }
 
-func newAndroidShellCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
+func newAndroidShellCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "shell",
-		Short: "Open an interactive ADB shell inside the remote Android device",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Use:   "shell [command...]",
+		Short: "Open an ADB shell or execute a shell command on the remote Android device",
+		RunE: func(cmd *cobra.Command, args []string) error {
 			serial, _ := cmd.Flags().GetString("serial")
 			adb := android.NewExecADBClient()
-			fmt.Printf("Connected to: %s\n\n", serial)
-			return adb.ShellStream(cmd.Context(), serial, os.Stdout)
+			if len(args) == 0 {
+				if err := adb.ShellStream(cmd.Context(), serial, os.Stdout); err == nil {
+					return nil
+				}
+			} else {
+				if out, err := adb.Shell(cmd.Context(), serial, args...); err == nil {
+					fmt.Print(out)
+					return nil
+				}
+			}
+
+			remoteArgs := []string{"adb"}
+			if serial != "" {
+				remoteArgs = append(remoteArgs, "-s", serial)
+			}
+			remoteArgs = append(remoteArgs, "shell")
+			remoteArgs = append(remoteArgs, args...)
+			return streamRemoteCommand(cmd.Context(), cfg, os.Stdout, remoteArgs...)
 		},
 	}
 	cmd.Flags().String("serial", "", "Device serial")
+	cmd.Flags().SetInterspersed(false)
 	return cmd
 }
 
-func newAndroidLogcatCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
+func newAndroidLogcatCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logcat",
 		Short: "Stream logcat output from the remote Android device",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			serial, _ := cmd.Flags().GetString("serial")
 			adb := android.NewExecADBClient()
-			return adb.Logcat(cmd.Context(), serial, os.Stdout)
+			if err := adb.Logcat(cmd.Context(), serial, os.Stdout); err == nil {
+				return nil
+			}
+
+			remoteArgs := []string{"adb"}
+			if serial != "" {
+				remoteArgs = append(remoteArgs, "-s", serial)
+			}
+			remoteArgs = append(remoteArgs, "logcat")
+			return streamRemoteCommand(cmd.Context(), cfg, os.Stdout, remoteArgs...)
 		},
 	}
 	cmd.Flags().String("serial", "", "Device serial")
@@ -414,7 +502,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 
 	startCmd := &cobra.Command{
 		Use:   "start",
-		Short: "Start the remote Android emulator",
+		Short: "Start the Android emulator",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			avd, _ := cmd.Flags().GetString("avd")
@@ -423,6 +511,44 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			gpu, _ := cmd.Flags().GetString("gpu")
 			snapshot, _ := cmd.Flags().GetString("snapshot")
 			noSnapshotLoad, _ := cmd.Flags().GetBool("no-snapshot-load")
+			remoteFlag, _ := cmd.Flags().GetBool("remote")
+
+			startRemote := func() error {
+				fmt.Printf("Starting emulator %s on remote node...\n", avd)
+				lines, _ := execRemoteCommand(ctx, cfg, "adb", "devices")
+				for _, d := range android.ParseDevicesOutput(strings.Join(lines, "\n")) {
+					if d.Type == android.DeviceTypeEmulator && (d.Status == "ready" || d.State == "device") {
+						fmt.Printf("✓ Emulator already running (%s)\n", d.Serial)
+						return nil
+					}
+				}
+
+				startSh := fmt.Sprintf("nohup emulator -avd %s -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-metrics > /tmp/emulator.log 2>&1 &", avd)
+				if _, err := execRemoteCommand(ctx, cfg, "bash", "-c", startSh); err != nil {
+					return fmt.Errorf("remote start emulator: %w", err)
+				}
+
+				fmt.Println("Waiting for remote Android emulator to boot...")
+				deadline := time.Now().Add(5 * time.Minute)
+				for time.Now().Before(deadline) {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(3 * time.Second):
+					}
+
+					res, err := execRemoteCommand(ctx, cfg, "adb", "shell", "getprop", "sys.boot_completed")
+					if err == nil && strings.TrimSpace(strings.Join(res, "")) == "1" {
+						fmt.Println("✓ Remote boot complete (emulator ready)")
+						return nil
+					}
+				}
+				return fmt.Errorf("timed out waiting for remote emulator to boot")
+			}
+
+			if remoteFlag {
+				return startRemote()
+			}
 
 			fmt.Printf("Starting emulator %s...\n", avd)
 			serial, err := mgr.Start(ctx, avd, android.EmulatorStartOpts{
@@ -435,7 +561,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 				NoSnapshotLoad: noSnapshotLoad,
 			})
 			if err != nil {
-				return fmt.Errorf("emulator start: %w", err)
+				return startRemote()
 			}
 
 			fmt.Printf("✓ Emulator started (serial: %s)\n", serial)
@@ -447,26 +573,36 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			return nil
 		},
 	}
-	startCmd.Flags().String("avd", "Pixel_8_API_35", "AVD name to start")
+	startCmd.Flags().String("avd", "Pixel_8_API_34", "AVD name to start")
 	startCmd.Flags().Int("cores", 4, "Number of CPU cores")
 	startCmd.Flags().Int("ram", 4096, "RAM in MB")
 	startCmd.Flags().String("gpu", "auto", "GPU mode: auto, host, swiftshader_indirect, off")
 	startCmd.Flags().String("snapshot", "", "Name of snapshot to boot from")
 	startCmd.Flags().Bool("no-snapshot-load", false, "Force cold boot without restoring snapshot")
+	startCmd.Flags().Bool("remote", false, "Start emulator explicitly on the remote node")
+
 	stopCmd := &cobra.Command{
 		Use:   "stop",
-		Short: "Stop the remote Android emulator",
+		Short: "Stop the Android emulator",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			serial, _ := cmd.Flags().GetString("serial")
+			remoteFlag, _ := cmd.Flags().GetBool("remote")
 			fmt.Printf("Stopping %s...\n", serial)
-			if err := mgr.Stop(cmd.Context(), serial); err != nil {
-				return fmt.Errorf("emulator stop: %w", err)
+			if !remoteFlag {
+				if err := mgr.Stop(cmd.Context(), serial); err == nil {
+					fmt.Println("✓ Emulator stopped")
+					return nil
+				}
 			}
-			fmt.Println("✓ Emulator stopped")
+			if _, err := execRemoteCommand(cmd.Context(), cfg, "adb", "-s", serial, "emu", "kill"); err != nil {
+				return fmt.Errorf("stop remote emulator: %w", err)
+			}
+			fmt.Println("✓ Emulator stopped on remote node")
 			return nil
 		},
 	}
 	stopCmd.Flags().String("serial", "emulator-5554", "Device serial to stop")
+	stopCmd.Flags().Bool("remote", false, "Stop emulator on the remote node")
 
 	statusCmd := &cobra.Command{
 		Use:   "status",
@@ -474,46 +610,23 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			infos, err := mgr.List(cmd.Context())
 			if err != nil {
-				conn, dialErr := DialScheduler(cmd.Context(), cfg)
-				if dialErr == nil {
-					defer func() { _ = conn.Close() }()
-					client := pb.NewSchedulerClient(conn)
-					cacheKey := fmt.Sprintf("exec:adb-emulator-status:%d", time.Now().UnixNano())
-					resp, submitErr := client.SubmitJob(cmd.Context(), &pb.SubmitJobRequest{
-						CacheKey:    cacheKey,
-						Toolchain:   string(apitypes.ToolchainExec),
-						Runner:      string(apitypes.RunnerHost),
-						CommandArgs: []string{"adb", "devices"},
-						SourceMode:  string(apitypes.SourceModeWorkspace),
-					})
-					if submitErr == nil {
-						stream, streamErr := client.StreamJobLogs(cmd.Context(), &pb.StreamJobLogsRequest{JobId: resp.JobId})
-						if streamErr == nil {
-							var logLines []string
-							for {
-								msg, recvErr := stream.Recv()
-								if recvErr != nil {
-									break
-								}
-								logLines = append(logLines, msg.Content)
-							}
-							remoteDevices := android.ParseDevicesOutput(strings.Join(logLines, "\n"))
-							var emulators []android.Device
-							for _, d := range remoteDevices {
-								if d.Type == android.DeviceTypeEmulator {
-									emulators = append(emulators, d)
-								}
-							}
-							if len(emulators) == 0 {
-								fmt.Println("No running emulators on remote node.")
-								return nil
-							}
-							for _, e := range emulators {
-								fmt.Printf("%-20s  %s\n", e.Serial, e.Status)
-							}
-							return nil
+				lines, remErr := execRemoteCommand(cmd.Context(), cfg, "adb", "devices")
+				if remErr == nil {
+					remoteDevices := android.ParseDevicesOutput(strings.Join(lines, "\n"))
+					var emulators []android.Device
+					for _, d := range remoteDevices {
+						if d.Type == android.DeviceTypeEmulator {
+							emulators = append(emulators, d)
 						}
 					}
+					if len(emulators) == 0 {
+						fmt.Println("No running emulators on remote node.")
+						return nil
+					}
+					for _, e := range emulators {
+						fmt.Printf("%-20s  %s\n", e.Serial, e.Status)
+					}
+					return nil
 				}
 				return fmt.Errorf("list emulators: %w", err)
 			}
@@ -523,6 +636,28 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			}
 			for _, e := range infos {
 				fmt.Printf("%-20s  %s\n", e.Serial, e.State)
+			}
+			return nil
+		},
+	}
+
+	avdsCmd := &cobra.Command{
+		Use:   "avds",
+		Short: "List available AVDs on the node",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			lines, err := execRemoteCommand(cmd.Context(), cfg, "avdmanager", "list", "avd", "-c")
+			if err != nil {
+				return fmt.Errorf("list avds: %w", err)
+			}
+			if len(lines) == 0 {
+				fmt.Println("No AVDs found.")
+				return nil
+			}
+			fmt.Println("Available AVDs:")
+			for _, l := range lines {
+				if strings.TrimSpace(l) != "" {
+					fmt.Printf("  - %s\n", strings.TrimSpace(l))
+				}
 			}
 			return nil
 		},
@@ -608,7 +743,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 
 	snapshotCmd.AddCommand(snapSaveCmd, snapLoadCmd, snapListCmd, snapDeleteCmd)
 
-	cmd.AddCommand(startCmd, stopCmd, statusCmd, snapshotCmd)
+	cmd.AddCommand(startCmd, stopCmd, statusCmd, avdsCmd, snapshotCmd)
 	return cmd
 }
 
@@ -910,13 +1045,36 @@ func checkMark(ok bool) string {
 	return "✗"
 }
 
-func newAndroidNodeCheckCommand(logger *slog.Logger) *cobra.Command {
-	return &cobra.Command{
+func newAndroidNodeCheckCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "node-check",
 		Short: "Check whether this node has all Android development prerequisites",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_ = logger
 			ctx := cmd.Context()
+			remoteFlag, _ := cmd.Flags().GetBool("remote")
+			if remoteFlag {
+				fmt.Println("Checking remote Android node capabilities...")
+				lines, err := execRemoteCommand(ctx, cfg, "bash", "-c", `
+echo "OS: $(uname -s) $(uname -m)"
+echo "JDK: $(javac -version 2>&1 || echo not_installed)"
+echo "ADB: $(adb version 2>&1 | head -n 1 || echo not_installed)"
+echo "EMULATOR: $(emulator -version 2>&1 | head -n 1 || echo not_installed)"
+echo "ANDROID_HOME: ${ANDROID_HOME:-not_set}"
+echo "KVM: $([ -e /dev/kvm ] && echo available || echo not_available)"
+echo "AVDS: $(avdmanager list avd -c 2>&1 | tr '\n' ' ' || echo none)"
+`)
+				if err != nil {
+					return fmt.Errorf("remote node check: %w", err)
+				}
+				for _, line := range lines {
+					if strings.TrimSpace(line) != "" {
+						fmt.Println(" ", line)
+					}
+				}
+				return nil
+			}
+
 			fmt.Println("Checking Android node capabilities...")
 
 			caps, err := android.CheckCapabilities(ctx)
@@ -954,6 +1112,31 @@ func newAndroidNodeCheckCommand(logger *slog.Logger) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().Bool("remote", false, "Check capabilities of the remote build node")
+	return cmd
+}
+
+func newAndroidSetupCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "setup",
+		Short: "Provision Android SDK, emulator, and system images on the node",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			avd, _ := cmd.Flags().GetString("avd")
+			api, _ := cmd.Flags().GetInt("api")
+
+			fmt.Println("Provisioning Android SDK and emulator on remote node...")
+			script := android.GenerateSetupScript(avd, api)
+			if err := streamRemoteCommand(ctx, cfg, os.Stdout, "bash", "-c", script); err != nil {
+				return fmt.Errorf("android setup: %w", err)
+			}
+			fmt.Println("\n✓ Android environment setup complete.")
+			return nil
+		},
+	}
+	cmd.Flags().String("avd", "Pixel_8_API_34", "Name of AVD to create")
+	cmd.Flags().Int("api", 34, "Android API level for SDK platform and system image")
+	return cmd
 }
 
 var _ io.Writer = os.Stdout
