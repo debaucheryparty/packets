@@ -34,13 +34,11 @@ Automatically detects toolchains and components in the workspace.`,
 				return fmt.Errorf("resolve directory: %w", err)
 			}
 
-			// Check if already initialized
 			if existing, err := project.LoadConfig(absDir); err == nil && existing != nil {
 				fmt.Printf("Project already initialized in %s (Project ID: %s)\n", absDir, existing.ProjectID)
 				return nil
 			}
 
-			// Detect topology
 			mgr := environment.NewManager()
 			topo, _ := mgr.Detect(absDir)
 

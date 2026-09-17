@@ -223,7 +223,6 @@ func TestStateMachine_Comprehensive(t *testing.T) {
 		apitypes.JobStateFallbackLocal,
 	}
 
-	// Terminal states must reject ANY transition
 	for _, term := range terminalStates {
 		for _, to := range allStates {
 			if err := sm.ValidateTransition(term, to); err == nil {
@@ -232,7 +231,6 @@ func TestStateMachine_Comprehensive(t *testing.T) {
 		}
 	}
 
-	// Pending can transition to Uploading, Dispatched, Failed, FallbackLocal
 	validFromPending := map[apitypes.JobState]bool{
 		apitypes.JobStateUploading:     true,
 		apitypes.JobStateDispatched:    true,
@@ -248,7 +246,6 @@ func TestStateMachine_Comprehensive(t *testing.T) {
 		}
 	}
 
-	// Running can transition to Succeeded, Failed, FallbackLocal
 	validFromRunning := map[apitypes.JobState]bool{
 		apitypes.JobStateSucceeded:     true,
 		apitypes.JobStateFailed:        true,
@@ -300,7 +297,6 @@ func TestDispatcher_JobRecoveryOnRestart(t *testing.T) {
 		t.Fatalf("CreateJob: %v", err)
 	}
 
-	// Verify both are returned by ListJobsByState
 	unrecovered, err := store.ListJobsByState(ctx, apitypes.JobStatePending, apitypes.JobStateDispatched)
 	if err != nil {
 		t.Fatalf("ListJobsByState: %v", err)
@@ -354,7 +350,6 @@ func TestDispatcher_ConcurrentJobSubmissions(t *testing.T) {
 		t.Errorf("concurrent submit error: %v", err)
 	}
 
-	// Verify all jobs exist in store
 	seenIDs := make(map[apitypes.JobID]bool)
 	for _, id := range jobIDs {
 		if id == "" {
