@@ -369,21 +369,6 @@ func (e *Executor) collectArtifacts(ctx context.Context, srcDir string, paths []
 	return apitypes.ArtifactRef(key), nil
 }
 
-func (e *Executor) Dispatch(ctx context.Context, job apitypes.Job) (apitypes.JobID, error) {
-	result, err := e.Execute(ctx, job)
-	if err != nil {
-		return "", err
-	}
-	if result.ExitCode != 0 {
-		return "", fmt.Errorf("build exited with code %d: %s", result.ExitCode, result.Stderr)
-	}
-	return job.ID, nil
-}
-
-func (e *Executor) Status(ctx context.Context, id apitypes.JobID) (apitypes.JobState, error) {
-	return apitypes.JobStateSucceeded, nil
-}
-
 func overrideEnv(base, overrides []string) []string {
 	if len(overrides) == 0 {
 		return base

@@ -12,17 +12,14 @@ import (
 )
 
 type Config struct {
-	TailscaleAuthKey      string
 	OracleVMTailscaleHost string
 	SchedulerGRPCPort     string
-	NATSUrl               string
 	SQLiteDBPath          string
 	GitHubActionsToken    string
 	GitHubActionsRepo     string
 	CircleCIToken         string
 	CircleCIProjectSlug   string
 	LogLevel              string
-	DirectCIMode          bool
 
 	ObjectStoreType           string
 	ObjectStoreBucket         string
@@ -37,9 +34,6 @@ type Config struct {
 	WorkspaceTempDir   string
 
 	DefaultRunner string
-
-	GitHubToken        string
-	GitHubWorkflowRepo string
 
 	TLSEnabled               bool
 	TLSCertFile              string
@@ -82,17 +76,14 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 	}
 
 	cfg := &Config{
-		TailscaleAuthKey:      os.Getenv("TAILSCALE_AUTH_KEY"),
 		OracleVMTailscaleHost: os.Getenv("ORACLE_VM_TAILSCALE_HOSTNAME"),
 		SchedulerGRPCPort:     os.Getenv("SCHEDULER_GRPC_PORT"),
-		NATSUrl:               os.Getenv("NATS_URL"),
 		SQLiteDBPath:          os.Getenv("SQLITE_DB_PATH"),
 		GitHubActionsToken:    os.Getenv("GITHUB_ACTIONS_TOKEN"),
 		GitHubActionsRepo:     os.Getenv("GITHUB_ACTIONS_REPO"),
 		CircleCIToken:         os.Getenv("CIRCLECI_TOKEN"),
 		CircleCIProjectSlug:   os.Getenv("CIRCLECI_PROJECT_SLUG"),
 		LogLevel:              os.Getenv("LOG_LEVEL"),
-		DirectCIMode:          os.Getenv("DIRECT_CI_MODE") == "true" || os.Getenv("DIRECT_CI_MODE") == "1",
 
 		ObjectStoreType:           os.Getenv("PACKETS_OBJECT_STORE"),
 		ObjectStoreBucket:         os.Getenv("PACKETS_S3_BUCKET"),
@@ -107,9 +98,6 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 		WorkspaceTempDir:   os.Getenv("PACKETS_WORKSPACE_TEMP_DIR"),
 
 		DefaultRunner: os.Getenv("PACKETS_DEFAULT_RUNNER"),
-
-		GitHubToken:        os.Getenv("PACKETS_GITHUB_TOKEN"),
-		GitHubWorkflowRepo: os.Getenv("PACKETS_GITHUB_WORKFLOW_REPO"),
 
 		TLSEnabled:               tlsEnabled,
 		TLSCertFile:              os.Getenv("PACKETS_TLS_CERT_FILE"),

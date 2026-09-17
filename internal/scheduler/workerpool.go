@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/debaucheryparty/packets/internal/storage"
 	"github.com/debaucheryparty/packets/internal/worker"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
@@ -220,11 +219,4 @@ func (w *WorkerPool) WorkerCount() int {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	return len(w.workers)
-}
-
-func (w *WorkerPool) RecoverPendingJobs(ctx context.Context, store *storage.JobStore) error {
-	if w.dispatcher != nil {
-		return w.dispatcher.RecoverPendingJobs(ctx)
-	}
-	return nil
 }

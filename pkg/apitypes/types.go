@@ -189,11 +189,8 @@ type Job struct {
 }
 
 type BuildRequest struct {
-	JobID         JobID
 	ProjectID     string
-	Directory     string
 	Toolchain     Toolchain
-	Args          []string
 	DockerImage   string
 	Runner        RunnerName
 	SourceMode    SourceMode
