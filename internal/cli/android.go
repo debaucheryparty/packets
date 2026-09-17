@@ -38,6 +38,7 @@ func NewAndroidCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		newAndroidNodeCheckCommand(cfg, logger),
 		newAndroidConnectCommand(cfg, logger),
 		newAndroidSetupCommand(cfg, logger),
+		newAndroidScreenshotCommand(cfg, logger),
 	)
 	return cmd
 }
@@ -423,6 +424,75 @@ func newAndroidLogcatCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command 
 		},
 	}
 	cmd.Flags().String("serial", "", "Device serial")
+	return cmd
+}
+
+func newAndroidScreenshotCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "screenshot [output.png]",
+		Short: "Capture a screenshot from the remote Android emulator display",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			outPath := "screenshot.png"
+			if len(args) > 0 {
+				outPath = args[0]
+			}
+			pwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+
+			fmt.Println("Capturing screenshot from remote Android emulator...")
+			shCmd := fmt.Sprintf("adb exec-out screencap -p > %s", outPath)
+			if _, err := execRemoteCommand(cmd.Context(), cfg, "bash", "-c", shCmd); err != nil {
+				return fmt.Errorf("remote screencap: %w", err)
+			}
+
+			conn, err := DialScheduler(cmd.Context(), cfg)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			client := pb.NewSchedulerClient(conn)
+			cacheKey := fmt.Sprintf("exec:screenshot:%d", time.Now().UnixNano())
+			resp, err := client.SubmitJob(cmd.Context(), &pb.SubmitJobRequest{
+				CacheKey:      cacheKey,
+				Toolchain:     string(apitypes.ToolchainExec),
+				Runner:        string(apitypes.RunnerHost),
+				CommandArgs:   []string{"ls", "-la", outPath},
+				ArtifactPaths: []string{outPath},
+				SourceMode:    string(apitypes.SourceModeWorkspace),
+			})
+			if err != nil {
+				return err
+			}
+
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-cmd.Context().Done():
+					return cmd.Context().Err()
+				case <-ticker.C:
+					st, err := client.GetJobStatus(cmd.Context(), &pb.GetJobStatusRequest{JobId: resp.JobId})
+					if err != nil {
+						return err
+					}
+					if st.State == pb.JobState_JOB_STATE_SUCCEEDED {
+						if err := PullAndExtractArtifact(cmd.Context(), cfg, logger, resp.JobId, pwd); err != nil {
+							return err
+						}
+						fmt.Printf("✓ Screenshot saved to %s\n", filepath.Join(pwd, outPath))
+						return nil
+					}
+					if st.State == pb.JobState_JOB_STATE_FAILED {
+						return fmt.Errorf("failed to fetch screenshot: %s", st.ErrorMessage)
+					}
+				}
+			}
+		},
+	}
 	return cmd
 }
 
