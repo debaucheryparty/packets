@@ -1,18 +1,18 @@
-package shim
+package toolchain
 
 import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/debaucheryparty/packets/internal/toolchain"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
+// Detector wraps the registry to detect the toolchain for a directory.
 type Detector struct {
-	registry *toolchain.Registry
+	registry *Registry
 }
 
-func NewDetector(registry *toolchain.Registry) *Detector {
+func NewDetector(registry *Registry) *Detector {
 	return &Detector{registry: registry}
 }
 

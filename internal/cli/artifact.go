@@ -15,7 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewArtifactCommand creates the command to manage and download build artifacts.
 func NewArtifactCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "artifact",
@@ -38,7 +37,6 @@ func NewArtifactCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command 
 	return cmd
 }
 
-// PullAndExtractArtifact fetches the remote artifact stream for jobID and extracts it into destDir.
 func PullAndExtractArtifact(ctx context.Context, cfg *config.Config, logger *slog.Logger, jobID, destDir string) error {
 	if destDir == "" {
 		destDir = "."

@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/debaucheryparty/packets/internal/shim"
+	"github.com/debaucheryparty/packets/internal/toolchain"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
@@ -21,7 +21,7 @@ func noopCommand() (string, []string) {
 
 func TestFallbackRunner(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := shim.NewFallbackRunner(logger)
+	runner := toolchain.NewFallbackRunner(logger)
 
 	var remoteCalled bool
 	remoteCall := func(ctx context.Context) error {
@@ -47,7 +47,7 @@ func TestFallbackRunner(t *testing.T) {
 
 func TestFallbackRunner_Timeout(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := shim.NewFallbackRunner(logger)
+	runner := toolchain.NewFallbackRunner(logger)
 
 	var remoteCalled bool
 	remoteCall := func(ctx context.Context) error {

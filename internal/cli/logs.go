@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewLogsCommand creates the command to stream logs for a remote job.
 func NewLogsCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "logs <job-id>",

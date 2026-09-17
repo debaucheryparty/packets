@@ -9,7 +9,6 @@ import (
 
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/project"
-	"github.com/debaucheryparty/packets/internal/shim"
 	"github.com/debaucheryparty/packets/internal/toolchain"
 	"github.com/debaucheryparty/packets/internal/workspace"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
@@ -54,7 +53,7 @@ Streams test execution logs and reports exit code.`,
 			}
 
 			registry := toolchain.NewRegistry()
-			detector := shim.NewDetector(registry)
+			detector := toolchain.NewDetector(registry)
 			def, err := detector.DetectToolchain(absDir)
 			if err != nil {
 				def = apitypes.ToolchainDef{

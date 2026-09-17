@@ -34,7 +34,6 @@ This project uses **Packets** for remote development, persistent builds, and too
 6. **Request Approval for Dangerous Operations**: For destructive file edits or production-facing operations, inform the user and request confirmation.
 `
 
-// GenerateInstructions generates AGENTS.md, .cursor/rules/packets.mdc, and .vscode/mcp.json for AI agents.
 func GenerateInstructions(projectDir string) error {
 	absDir, err := filepath.Abs(projectDir)
 	if err != nil {

@@ -1,4 +1,4 @@
-package shim
+package toolchain
 
 import (
 	"context"
@@ -17,6 +17,7 @@ var (
 	ErrRemoteTimeout     = errors.New("remote backend timed out")
 )
 
+// FallbackRunner tries a remote call and runs the toolchain locally if it fails.
 type FallbackRunner struct {
 	logger *slog.Logger
 }
@@ -33,7 +34,6 @@ func (f *FallbackRunner) ExecuteWithFallback(ctx context.Context, def apitypes.T
 	if err == nil {
 		return nil
 	}
-
 	f.logFallback(ctx, def, err)
 
 	return f.executeLocal(ctx, def, dir, args)

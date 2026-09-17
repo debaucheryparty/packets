@@ -85,7 +85,6 @@ func UploadWorkspace(ctx context.Context, conn *grpc.ClientConn, dir string, for
 	return commitResp.SnapshotRef, nil
 }
 
-// manifestToProto converts a domain WorkspaceManifest to protobuf FileEntry slice.
 func manifestToProto(m *apitypes.WorkspaceManifest) []*pb.FileEntry {
 	out := make([]*pb.FileEntry, len(m.Files))
 	for i, f := range m.Files {

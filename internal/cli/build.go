@@ -9,7 +9,6 @@ import (
 
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/project"
-	"github.com/debaucheryparty/packets/internal/shim"
 	"github.com/debaucheryparty/packets/internal/toolchain"
 	"github.com/debaucheryparty/packets/internal/workspace"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
@@ -80,7 +79,7 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 				return fmt.Errorf("unknown toolchain: %s", toolchainFlag)
 			}
 		} else {
-			detector := shim.NewDetector(registry)
+			detector := toolchain.NewDetector(registry)
 			var detectErr error
 			def, detectErr = detector.DetectToolchain(pwd)
 			if detectErr != nil {
