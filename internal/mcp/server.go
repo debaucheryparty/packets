@@ -365,6 +365,52 @@ func (s *Server) listTools() []Tool {
 			Description: "Check status of the Packets remote daemon and active jobs",
 			InputSchema: ToolSchema{Type: "object", Properties: map[string]PropertyDef{}},
 		},
+		{
+			Name:        "packets_subspace_create",
+			Description: "Create a persistent remote Subspace development environment",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"dir":        {Type: "string", Description: "Project directory path"},
+					"project_id": {Type: "string", Description: "Optional project identifier"},
+					"worker_id":  {Type: "string", Description: "Target worker node ID (defaults to local)"},
+					"env_id":     {Type: "string", Description: "Environment profile identifier"},
+				},
+			},
+		},
+		{
+			Name:        "packets_subspace_list",
+			Description: "List all persistent remote Subspaces",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"project_id": {Type: "string", Description: "Filter by project ID"},
+					"owner_id":   {Type: "string", Description: "Filter by owner ID"},
+				},
+			},
+		},
+		{
+			Name:        "packets_subspace_status",
+			Description: "Inspect details, environment, and health of a Subspace",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"subspace_id": {Type: "string", Description: "Subspace ID to inspect"},
+				},
+				Required: []string{"subspace_id"},
+			},
+		},
+		{
+			Name:        "packets_subspace_destroy",
+			Description: "Destroy a persistent remote Subspace and release its resources",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"subspace_id": {Type: "string", Description: "Subspace ID to destroy"},
+				},
+				Required: []string{"subspace_id"},
+			},
+		},
 	}
 }
 
@@ -893,6 +939,97 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			defer func() { _ = conn.Close() }()
 		}
 		return textResult("✓ Packets scheduler daemon is active, healthy, and reachable via gRPC.")
+
+	case "packets_subspace_create":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+
+		projID, _ := params.Arguments["project_id"].(string)
+		if projID == "" {
+			projID = project.ResolveProjectID(dir)
+		}
+		workerID, _ := params.Arguments["worker_id"].(string)
+		envID, _ := params.Arguments["env_id"].(string)
+
+		client := pb.NewSubspaceServiceClient(conn)
+		resp, err := client.CreateSubspace(ctx, &pb.CreateSubspaceRequest{
+			ProjectId:     projID,
+			WorkerId:      workerID,
+			EnvironmentId: envID,
+		})
+		if err != nil {
+			return errorResult("Create subspace failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Subspace, "", "  ")
+		return textResult(string(data))
+
+	case "packets_subspace_list":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		projID, _ := params.Arguments["project_id"].(string)
+		ownerID, _ := params.Arguments["owner_id"].(string)
+
+		client := pb.NewSubspaceServiceClient(conn)
+		resp, err := client.ListSubspaces(ctx, &pb.ListSubspacesRequest{
+			ProjectId: projID,
+			OwnerId:   ownerID,
+		})
+		if err != nil {
+			return errorResult("List subspaces failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Subspaces, "", "  ")
+		return textResult(string(data))
+
+	case "packets_subspace_status":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		subID, _ := params.Arguments["subspace_id"].(string)
+		if subID == "" {
+			return errorResult("subspace_id is required")
+		}
+
+		client := pb.NewSubspaceServiceClient(conn)
+		resp, err := client.GetSubspace(ctx, &pb.GetSubspaceRequest{Id: subID})
+		if err != nil {
+			return errorResult("Get subspace failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Subspace, "", "  ")
+		return textResult(string(data))
+
+	case "packets_subspace_destroy":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		subID, _ := params.Arguments["subspace_id"].(string)
+		if subID == "" {
+			return errorResult("subspace_id is required")
+		}
+
+		client := pb.NewSubspaceServiceClient(conn)
+		_, err = client.DestroySubspace(ctx, &pb.DestroySubspaceRequest{Id: subID})
+		if err != nil {
+			return errorResult("Destroy subspace failed: " + err.Error())
+		}
+		return textResult(fmt.Sprintf("Subspace %s successfully destroyed", subID))
 
 	default:
 		return errorResult(fmt.Sprintf("Unknown tool: %s", params.Name))
