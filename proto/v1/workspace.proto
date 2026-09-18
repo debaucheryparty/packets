@@ -7,6 +7,7 @@ service Workspace {
   rpc Diff(WorkspaceManifest) returns (DiffResponse);
   rpc Commit(CommitRequest) returns (CommitResponse);
   rpc Snapshot(DownloadRequest) returns (stream WorkspaceChunk);
+  rpc VerifySnapshot(VerifySnapshotRequest) returns (VerifySnapshotResponse);
 }
 
 message WorkspaceManifest {
@@ -46,4 +47,15 @@ message WorkspaceChunk {
 
 message DownloadRequest {
   string snapshot_ref = 1;
+}
+
+message VerifySnapshotRequest {
+  string snapshot_ref = 1;
+}
+
+message VerifySnapshotResponse {
+  bool exists = 1;
+  int32 file_count = 2;
+  int64 total_size = 3;
+  string root_hash = 4;
 }

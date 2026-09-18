@@ -10,7 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/debaucheryparty/packets/internal/storage"
+	"github.com/debaucheryparty/packets/internal/toolchain"
 	"github.com/debaucheryparty/packets/internal/workspace"
+	pb "github.com/debaucheryparty/packets/proto/v1"
 )
 
 func TestScanWorkspaceAndNormalize(t *testing.T) {
@@ -560,5 +563,53 @@ func TestArtifactJournalCompensation(t *testing.T) {
 	}
 	if len(uncompAfter) != 0 {
 		t.Errorf("expected 0 uncompensated workflows, got %v", uncompAfter)
+	}
+}
+
+func TestWorkspaceServer_VerifySnapshot(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	store, err := storage.NewDiskObjectStore(filepath.Join(tmpDir, "store"), "http://localhost")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := workspace.NewServer(store, toolchain.NewRegistry())
+
+	resp, err := srv.VerifySnapshot(ctx, &pb.VerifySnapshotRequest{SnapshotRef: "non-existent"})
+	if err != nil {
+		t.Fatalf("VerifySnapshot failed: %v", err)
+	}
+	if resp.Exists {
+		t.Errorf("expected non-existent snapshot to report exists=false")
+	}
+
+	commitResp, err := srv.Commit(ctx, &pb.CommitRequest{
+		RootHash: "snap-abc-123",
+		Files: []*pb.FileEntry{
+			{Path: "main.go", Hash: "h1", Size: 42, IsDir: false},
+			{Path: "dir", Hash: "", Size: 0, IsDir: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	resp, err = srv.VerifySnapshot(ctx, &pb.VerifySnapshotRequest{SnapshotRef: commitResp.SnapshotRef})
+	if err != nil {
+		t.Fatalf("VerifySnapshot failed: %v", err)
+	}
+	if !resp.Exists {
+		t.Errorf("expected exists=true")
+	}
+	if resp.FileCount != 1 {
+		t.Errorf("expected file count 1, got %d", resp.FileCount)
+	}
+	if resp.TotalSize != 42 {
+		t.Errorf("expected total size 42, got %d", resp.TotalSize)
+	}
+	if resp.RootHash != "snap-abc-123" {
+		t.Errorf("expected root hash snap-abc-123, got %s", resp.RootHash)
 	}
 }

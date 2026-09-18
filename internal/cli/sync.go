@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/config"
-	"github.com/debaucheryparty/packets/internal/project"
 	"github.com/debaucheryparty/packets/internal/workspace"
-	"github.com/debaucheryparty/packets/pkg/apitypes"
 	pb "github.com/debaucheryparty/packets/proto/v1"
 	"github.com/spf13/cobra"
 )
@@ -88,26 +86,15 @@ Supports incremental chunk synchronization and full synchronization with deletio
 				return fmt.Errorf("workspace upload: %w", err)
 			}
 
-			projectID := project.ResolveProjectID(absDir)
-			client := pb.NewSchedulerClient(conn)
-			cacheKey := fmt.Sprintf("sync:%s:%d", snapshotRef, time.Now().UnixNano())
-			submitResp, err := client.SubmitJob(ctx, &pb.SubmitJobRequest{
-				CacheKey:    cacheKey,
-				Toolchain:   string(apitypes.ToolchainExec),
-				Runner:      string(apitypes.RunnerHost),
-				SourceMode:  string(apitypes.SourceModeWorkspace),
+			wsClient := pb.NewWorkspaceClient(conn)
+			verifyResp, err := wsClient.VerifySnapshot(ctx, &pb.VerifySnapshotRequest{
 				SnapshotRef: snapshotRef,
-				CommandArgs: []string{"true"},
-				ProjectId:   projectID,
 			})
-			if err == nil {
-				for i := 0; i < 20; i++ {
-					st, sErr := client.GetJobStatus(ctx, &pb.GetJobStatusRequest{JobId: submitResp.JobId})
-					if sErr == nil && (st.State == pb.JobState_JOB_STATE_SUCCEEDED || st.State == pb.JobState_JOB_STATE_FAILED) {
-						break
-					}
-					time.Sleep(150 * time.Millisecond)
-				}
+			if err != nil {
+				return fmt.Errorf("verify snapshot: %w", err)
+			}
+			if !verifyResp.Exists {
+				return fmt.Errorf("snapshot %s was not verified on remote workspace", snapshotRef)
 			}
 
 			duration := time.Since(start).Round(time.Millisecond)

@@ -417,6 +417,118 @@ func (x *DownloadRequest) GetSnapshotRef() string {
 	return ""
 }
 
+type VerifySnapshotRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SnapshotRef   string                 `protobuf:"bytes,1,opt,name=snapshot_ref,json=snapshotRef,proto3" json:"snapshot_ref,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifySnapshotRequest) Reset() {
+	*x = VerifySnapshotRequest{}
+	mi := &file_proto_v1_workspace_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifySnapshotRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifySnapshotRequest) ProtoMessage() {}
+
+func (x *VerifySnapshotRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_workspace_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifySnapshotRequest.ProtoReflect.Descriptor instead.
+func (*VerifySnapshotRequest) Descriptor() ([]byte, []int) {
+	return file_proto_v1_workspace_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *VerifySnapshotRequest) GetSnapshotRef() string {
+	if x != nil {
+		return x.SnapshotRef
+	}
+	return ""
+}
+
+type VerifySnapshotResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Exists        bool                   `protobuf:"varint,1,opt,name=exists,proto3" json:"exists,omitempty"`
+	FileCount     int32                  `protobuf:"varint,2,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
+	TotalSize     int64                  `protobuf:"varint,3,opt,name=total_size,json=totalSize,proto3" json:"total_size,omitempty"`
+	RootHash      string                 `protobuf:"bytes,4,opt,name=root_hash,json=rootHash,proto3" json:"root_hash,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifySnapshotResponse) Reset() {
+	*x = VerifySnapshotResponse{}
+	mi := &file_proto_v1_workspace_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifySnapshotResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifySnapshotResponse) ProtoMessage() {}
+
+func (x *VerifySnapshotResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_workspace_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifySnapshotResponse.ProtoReflect.Descriptor instead.
+func (*VerifySnapshotResponse) Descriptor() ([]byte, []int) {
+	return file_proto_v1_workspace_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *VerifySnapshotResponse) GetExists() bool {
+	if x != nil {
+		return x.Exists
+	}
+	return false
+}
+
+func (x *VerifySnapshotResponse) GetFileCount() int32 {
+	if x != nil {
+		return x.FileCount
+	}
+	return 0
+}
+
+func (x *VerifySnapshotResponse) GetTotalSize() int64 {
+	if x != nil {
+		return x.TotalSize
+	}
+	return 0
+}
+
+func (x *VerifySnapshotResponse) GetRootHash() string {
+	if x != nil {
+		return x.RootHash
+	}
+	return ""
+}
+
 var File_proto_v1_workspace_proto protoreflect.FileDescriptor
 
 const file_proto_v1_workspace_proto_rawDesc = "" +
@@ -450,11 +562,21 @@ const file_proto_v1_workspace_proto_rawDesc = "" +
 	"\x0eWorkspaceChunk\x12\x14\n" +
 	"\x05chunk\x18\x01 \x01(\fR\x05chunk\"4\n" +
 	"\x0fDownloadRequest\x12!\n" +
-	"\fsnapshot_ref\x18\x01 \x01(\tR\vsnapshotRef2\xd4\x01\n" +
+	"\fsnapshot_ref\x18\x01 \x01(\tR\vsnapshotRef\":\n" +
+	"\x15VerifySnapshotRequest\x12!\n" +
+	"\fsnapshot_ref\x18\x01 \x01(\tR\vsnapshotRef\"\x8b\x01\n" +
+	"\x16VerifySnapshotResponse\x12\x16\n" +
+	"\x06exists\x18\x01 \x01(\bR\x06exists\x12\x1d\n" +
+	"\n" +
+	"file_count\x18\x02 \x01(\x05R\tfileCount\x12\x1d\n" +
+	"\n" +
+	"total_size\x18\x03 \x01(\x03R\ttotalSize\x12\x1b\n" +
+	"\troot_hash\x18\x04 \x01(\tR\brootHash2\xad\x02\n" +
 	"\tWorkspace\x12?\n" +
 	"\x04Diff\x12\x1d.packets.v1.WorkspaceManifest\x1a\x18.packets.v1.DiffResponse\x12?\n" +
 	"\x06Commit\x12\x19.packets.v1.CommitRequest\x1a\x1a.packets.v1.CommitResponse\x12E\n" +
-	"\bSnapshot\x12\x1b.packets.v1.DownloadRequest\x1a\x1a.packets.v1.WorkspaceChunk0\x01B&Z$github.com/waris4ly/packets/proto/v1b\x06proto3"
+	"\bSnapshot\x12\x1b.packets.v1.DownloadRequest\x1a\x1a.packets.v1.WorkspaceChunk0\x01\x12W\n" +
+	"\x0eVerifySnapshot\x12!.packets.v1.VerifySnapshotRequest\x1a\".packets.v1.VerifySnapshotResponseB-Z+github.com/debaucheryparty/packets/proto/v1b\x06proto3"
 
 var (
 	file_proto_v1_workspace_proto_rawDescOnce sync.Once
@@ -468,29 +590,33 @@ func file_proto_v1_workspace_proto_rawDescGZIP() []byte {
 	return file_proto_v1_workspace_proto_rawDescData
 }
 
-var file_proto_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_proto_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_proto_v1_workspace_proto_goTypes = []any{
-	(*WorkspaceManifest)(nil), // 0: packets.v1.WorkspaceManifest
-	(*FileEntry)(nil),         // 1: packets.v1.FileEntry
-	(*DiffResponse)(nil),      // 2: packets.v1.DiffResponse
-	(*CommitRequest)(nil),     // 3: packets.v1.CommitRequest
-	(*CommitResponse)(nil),    // 4: packets.v1.CommitResponse
-	(*WorkspaceChunk)(nil),    // 5: packets.v1.WorkspaceChunk
-	(*DownloadRequest)(nil),   // 6: packets.v1.DownloadRequest
-	nil,                       // 7: packets.v1.DiffResponse.PresignedPutUrlsEntry
+	(*WorkspaceManifest)(nil),      // 0: packets.v1.WorkspaceManifest
+	(*FileEntry)(nil),              // 1: packets.v1.FileEntry
+	(*DiffResponse)(nil),           // 2: packets.v1.DiffResponse
+	(*CommitRequest)(nil),          // 3: packets.v1.CommitRequest
+	(*CommitResponse)(nil),         // 4: packets.v1.CommitResponse
+	(*WorkspaceChunk)(nil),         // 5: packets.v1.WorkspaceChunk
+	(*DownloadRequest)(nil),        // 6: packets.v1.DownloadRequest
+	(*VerifySnapshotRequest)(nil),  // 7: packets.v1.VerifySnapshotRequest
+	(*VerifySnapshotResponse)(nil), // 8: packets.v1.VerifySnapshotResponse
+	nil,                            // 9: packets.v1.DiffResponse.PresignedPutUrlsEntry
 }
 var file_proto_v1_workspace_proto_depIdxs = []int32{
 	1, // 0: packets.v1.WorkspaceManifest.files:type_name -> packets.v1.FileEntry
-	7, // 1: packets.v1.DiffResponse.presigned_put_urls:type_name -> packets.v1.DiffResponse.PresignedPutUrlsEntry
+	9, // 1: packets.v1.DiffResponse.presigned_put_urls:type_name -> packets.v1.DiffResponse.PresignedPutUrlsEntry
 	1, // 2: packets.v1.CommitRequest.files:type_name -> packets.v1.FileEntry
 	0, // 3: packets.v1.Workspace.Diff:input_type -> packets.v1.WorkspaceManifest
 	3, // 4: packets.v1.Workspace.Commit:input_type -> packets.v1.CommitRequest
 	6, // 5: packets.v1.Workspace.Snapshot:input_type -> packets.v1.DownloadRequest
-	2, // 6: packets.v1.Workspace.Diff:output_type -> packets.v1.DiffResponse
-	4, // 7: packets.v1.Workspace.Commit:output_type -> packets.v1.CommitResponse
-	5, // 8: packets.v1.Workspace.Snapshot:output_type -> packets.v1.WorkspaceChunk
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
+	7, // 6: packets.v1.Workspace.VerifySnapshot:input_type -> packets.v1.VerifySnapshotRequest
+	2, // 7: packets.v1.Workspace.Diff:output_type -> packets.v1.DiffResponse
+	4, // 8: packets.v1.Workspace.Commit:output_type -> packets.v1.CommitResponse
+	5, // 9: packets.v1.Workspace.Snapshot:output_type -> packets.v1.WorkspaceChunk
+	8, // 10: packets.v1.Workspace.VerifySnapshot:output_type -> packets.v1.VerifySnapshotResponse
+	7, // [7:11] is the sub-list for method output_type
+	3, // [3:7] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
 	3, // [3:3] is the sub-list for extension extendee
 	0, // [0:3] is the sub-list for field type_name
@@ -507,7 +633,7 @@ func file_proto_v1_workspace_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_v1_workspace_proto_rawDesc), len(file_proto_v1_workspace_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

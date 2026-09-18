@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Workspace_Diff_FullMethodName     = "/packets.v1.Workspace/Diff"
-	Workspace_Commit_FullMethodName   = "/packets.v1.Workspace/Commit"
-	Workspace_Snapshot_FullMethodName = "/packets.v1.Workspace/Snapshot"
+	Workspace_Diff_FullMethodName           = "/packets.v1.Workspace/Diff"
+	Workspace_Commit_FullMethodName         = "/packets.v1.Workspace/Commit"
+	Workspace_Snapshot_FullMethodName       = "/packets.v1.Workspace/Snapshot"
+	Workspace_VerifySnapshot_FullMethodName = "/packets.v1.Workspace/VerifySnapshot"
 )
 
 // WorkspaceClient is the client API for Workspace service.
@@ -31,6 +32,7 @@ type WorkspaceClient interface {
 	Diff(ctx context.Context, in *WorkspaceManifest, opts ...grpc.CallOption) (*DiffResponse, error)
 	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error)
 	Snapshot(ctx context.Context, in *DownloadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkspaceChunk], error)
+	VerifySnapshot(ctx context.Context, in *VerifySnapshotRequest, opts ...grpc.CallOption) (*VerifySnapshotResponse, error)
 }
 
 type workspaceClient struct {
@@ -80,6 +82,16 @@ func (c *workspaceClient) Snapshot(ctx context.Context, in *DownloadRequest, opt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Workspace_SnapshotClient = grpc.ServerStreamingClient[WorkspaceChunk]
 
+func (c *workspaceClient) VerifySnapshot(ctx context.Context, in *VerifySnapshotRequest, opts ...grpc.CallOption) (*VerifySnapshotResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VerifySnapshotResponse)
+	err := c.cc.Invoke(ctx, Workspace_VerifySnapshot_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkspaceServer is the server API for Workspace service.
 // All implementations must embed UnimplementedWorkspaceServer
 // for forward compatibility.
@@ -87,6 +99,7 @@ type WorkspaceServer interface {
 	Diff(context.Context, *WorkspaceManifest) (*DiffResponse, error)
 	Commit(context.Context, *CommitRequest) (*CommitResponse, error)
 	Snapshot(*DownloadRequest, grpc.ServerStreamingServer[WorkspaceChunk]) error
+	VerifySnapshot(context.Context, *VerifySnapshotRequest) (*VerifySnapshotResponse, error)
 	mustEmbedUnimplementedWorkspaceServer()
 }
 
@@ -105,6 +118,9 @@ func (UnimplementedWorkspaceServer) Commit(context.Context, *CommitRequest) (*Co
 }
 func (UnimplementedWorkspaceServer) Snapshot(*DownloadRequest, grpc.ServerStreamingServer[WorkspaceChunk]) error {
 	return status.Error(codes.Unimplemented, "method Snapshot not implemented")
+}
+func (UnimplementedWorkspaceServer) VerifySnapshot(context.Context, *VerifySnapshotRequest) (*VerifySnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method VerifySnapshot not implemented")
 }
 func (UnimplementedWorkspaceServer) mustEmbedUnimplementedWorkspaceServer() {}
 func (UnimplementedWorkspaceServer) testEmbeddedByValue()                   {}
@@ -174,6 +190,24 @@ func _Workspace_Snapshot_Handler(srv interface{}, stream grpc.ServerStream) erro
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Workspace_SnapshotServer = grpc.ServerStreamingServer[WorkspaceChunk]
 
+func _Workspace_VerifySnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VerifySnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkspaceServer).VerifySnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Workspace_VerifySnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkspaceServer).VerifySnapshot(ctx, req.(*VerifySnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Workspace_ServiceDesc is the grpc.ServiceDesc for Workspace service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -188,6 +222,10 @@ var Workspace_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Commit",
 			Handler:    _Workspace_Commit_Handler,
+		},
+		{
+			MethodName: "VerifySnapshot",
+			Handler:    _Workspace_VerifySnapshot_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

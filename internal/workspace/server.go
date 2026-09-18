@@ -183,6 +183,40 @@ func (s *Server) Snapshot(req *pb.DownloadRequest, stream pb.Workspace_SnapshotS
 	return nil
 }
 
+func (s *Server) VerifySnapshot(ctx context.Context, req *pb.VerifySnapshotRequest) (*pb.VerifySnapshotResponse, error) {
+	if req.SnapshotRef == "" {
+		return nil, status.Error(codes.InvalidArgument, "snapshot_ref is required")
+	}
+	owner := ownerFromCtx(ctx)
+	manifestKey := fmt.Sprintf("%s/manifests/%s.json", owner, req.SnapshotRef)
+	r, err := s.store.Download(ctx, manifestKey)
+	if err != nil {
+		return &pb.VerifySnapshotResponse{Exists: false}, nil
+	}
+	defer func() { _ = r.Close() }()
+
+	var manifest apitypes.WorkspaceManifest
+	if err := json.NewDecoder(r).Decode(&manifest); err != nil {
+		return nil, status.Errorf(codes.Internal, "decode manifest: %v", err)
+	}
+
+	var totalSize int64
+	var fileCount int32
+	for _, f := range manifest.Files {
+		if !f.IsDir {
+			fileCount++
+			totalSize += f.Size
+		}
+	}
+
+	return &pb.VerifySnapshotResponse{
+		Exists:    true,
+		FileCount: fileCount,
+		TotalSize: totalSize,
+		RootHash:  manifest.RootHash,
+	}, nil
+}
+
 func (s *Server) ResolveManifest(ctx context.Context, owner, snapshotRef string) (*apitypes.WorkspaceManifest, error) {
 	key := fmt.Sprintf("%s/manifests/%s.json", owner, snapshotRef)
 	r, err := s.store.Download(ctx, key)
