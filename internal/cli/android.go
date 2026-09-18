@@ -1019,6 +1019,13 @@ func newAndroidConnectCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 				}
 			}
 			if host == "" {
+				h := os.Getenv("PACKETS_SERVER_ADDR")
+				if idx := strings.Index(h, ":"); idx != -1 {
+					h = h[:idx]
+				}
+				host = h
+			}
+			if host == "" {
 				host = os.Getenv("ORACLE_VM_TAILSCALE_HOSTNAME")
 			}
 			if host == "" {
