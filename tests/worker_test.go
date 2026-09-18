@@ -2,6 +2,8 @@ package tests
 
 import (
 	"context"
+	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,9 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/debaucheryparty/packets/internal/scheduler"
+	"github.com/debaucheryparty/packets/internal/storage"
 	"github.com/debaucheryparty/packets/internal/toolchain"
 	"github.com/debaucheryparty/packets/internal/worker"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
+	pb "github.com/debaucheryparty/packets/proto/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type workerTestPublisher struct {
@@ -323,4 +330,146 @@ func TestHost_SecurityPolicy(t *testing.T) {
 	if res.ExitCode == 0 {
 		t.Errorf("expected non-zero exit code for blocked command")
 	}
+}
+
+func TestWorkerStream_RemotePeerExecution(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen on TCP: %v", err)
+	}
+	defer func() { _ = lis.Close() }()
+
+	store, err := storage.NewJobStore(ctx, ":memory:")
+	if err != nil {
+		t.Fatalf("NewJobStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	logBroker := scheduler.NewLogBroker()
+	dispatcher := scheduler.NewDispatcher(slog.Default(), store, nil, nil, nil, logBroker)
+	wp := scheduler.NewWorkerPool(slog.Default(), dispatcher, 5)
+	dispatcher.SetWorkerPool(wp)
+
+	grpcServer := grpc.NewServer()
+	schedServer := scheduler.NewServer(dispatcher, store, logBroker, nil, nil)
+	pb.RegisterSchedulerServer(grpcServer, schedServer)
+
+	go func() {
+		_ = grpcServer.Serve(lis)
+	}()
+	defer grpcServer.Stop()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	client := pb.NewSchedulerClient(conn)
+	stream, err := client.RegisterWorkerStream(ctx)
+	if err != nil {
+		t.Fatalf("RegisterWorkerStream: %v", err)
+	}
+
+	workerID := "peer-laptop-1"
+	err = stream.Send(&pb.WorkerMsg{
+		Payload: &pb.WorkerMsg_Hello{
+			Hello: &pb.WorkerHello{
+				WorkerId: workerID,
+				NodeName: "laptop-alice",
+				Arch:     "amd64",
+				Cores:    4,
+				MaxJobs:  2,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("stream.Send Hello: %v", err)
+	}
+
+	ackMsg, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("stream.Recv Ack: %v", err)
+	}
+	if ack := ackMsg.GetAck(); ack == nil || !ack.Success {
+		t.Fatalf("expected successful ack, got %v", ackMsg)
+	}
+
+	if wp.WorkerCount() != 1 {
+		t.Fatalf("expected 1 worker registered in workerpool, got %d", wp.WorkerCount())
+	}
+
+	jobID := apitypes.JobID("remote-job-123")
+	job := apitypes.Job{
+		ID:          jobID,
+		Toolchain:   apitypes.ToolchainGo,
+		CommandArgs: []string{"echo", "worker-executed"},
+		Runner:      apitypes.RunnerHost,
+		Owner:       "test-owner",
+		SubmittedAt: time.Now().UTC(),
+	}
+
+	resCh := make(chan apitypes.ExecutionResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		res, _, execErr := wp.ExecuteOnWorker(ctx, job)
+		if execErr != nil {
+			errCh <- execErr
+			return
+		}
+		resCh <- res
+	}()
+
+	assignMsg, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("stream.Recv Assign: %v", err)
+	}
+	assign := assignMsg.GetAssign()
+	if assign == nil || assign.JobId != string(jobID) {
+		t.Fatalf("unexpected assign message: %v", assignMsg)
+	}
+
+	err = stream.Send(&pb.WorkerMsg{
+		Payload: &pb.WorkerMsg_Log{
+			Log: &pb.WorkerJobLog{
+				JobId: string(jobID),
+				Line:  "remote worker starting job",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("stream.Send Log: %v", err)
+	}
+
+	err = stream.Send(&pb.WorkerMsg{
+		Payload: &pb.WorkerMsg_Result{
+			Result: &pb.WorkerJobResult{
+				JobId:    string(jobID),
+				ExitCode: 0,
+				Stdout:   "worker-executed\n",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("stream.Send Result: %v", err)
+	}
+
+	select {
+	case execErr := <-errCh:
+		t.Fatalf("ExecuteOnWorker returned error: %v", execErr)
+	case res := <-resCh:
+		if res.ExitCode != 0 {
+			t.Errorf("expected exit code 0, got %d", res.ExitCode)
+		}
+		if !strings.Contains(res.Stdout, "worker-executed") {
+			t.Errorf("expected stdout to contain 'worker-executed', got %q", res.Stdout)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for ExecuteOnWorker to return")
+	}
+
+	_ = stream.CloseSend()
 }

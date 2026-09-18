@@ -19,13 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Scheduler_SubmitJob_FullMethodName        = "/packets.v1.Scheduler/SubmitJob"
-	Scheduler_GetJobStatus_FullMethodName     = "/packets.v1.Scheduler/GetJobStatus"
-	Scheduler_StreamJobLogs_FullMethodName    = "/packets.v1.Scheduler/StreamJobLogs"
-	Scheduler_ClearCache_FullMethodName       = "/packets.v1.Scheduler/ClearCache"
-	Scheduler_DownloadArtifact_FullMethodName = "/packets.v1.Scheduler/DownloadArtifact"
-	Scheduler_CancelJob_FullMethodName        = "/packets.v1.Scheduler/CancelJob"
-	Scheduler_ListJobs_FullMethodName         = "/packets.v1.Scheduler/ListJobs"
+	Scheduler_SubmitJob_FullMethodName            = "/packets.v1.Scheduler/SubmitJob"
+	Scheduler_GetJobStatus_FullMethodName         = "/packets.v1.Scheduler/GetJobStatus"
+	Scheduler_StreamJobLogs_FullMethodName        = "/packets.v1.Scheduler/StreamJobLogs"
+	Scheduler_ClearCache_FullMethodName           = "/packets.v1.Scheduler/ClearCache"
+	Scheduler_DownloadArtifact_FullMethodName     = "/packets.v1.Scheduler/DownloadArtifact"
+	Scheduler_CancelJob_FullMethodName            = "/packets.v1.Scheduler/CancelJob"
+	Scheduler_ListJobs_FullMethodName             = "/packets.v1.Scheduler/ListJobs"
+	Scheduler_RegisterWorkerStream_FullMethodName = "/packets.v1.Scheduler/RegisterWorkerStream"
 )
 
 // SchedulerClient is the client API for Scheduler service.
@@ -39,6 +40,7 @@ type SchedulerClient interface {
 	DownloadArtifact(ctx context.Context, in *DownloadArtifactRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArtifactChunk], error)
 	CancelJob(ctx context.Context, in *CancelJobRequest, opts ...grpc.CallOption) (*CancelJobResponse, error)
 	ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error)
+	RegisterWorkerStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[WorkerMsg, SchedulerMsg], error)
 }
 
 type schedulerClient struct {
@@ -137,6 +139,19 @@ func (c *schedulerClient) ListJobs(ctx context.Context, in *ListJobsRequest, opt
 	return out, nil
 }
 
+func (c *schedulerClient) RegisterWorkerStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[WorkerMsg, SchedulerMsg], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Scheduler_ServiceDesc.Streams[2], Scheduler_RegisterWorkerStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WorkerMsg, SchedulerMsg]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Scheduler_RegisterWorkerStreamClient = grpc.BidiStreamingClient[WorkerMsg, SchedulerMsg]
+
 // SchedulerServer is the server API for Scheduler service.
 // All implementations must embed UnimplementedSchedulerServer
 // for forward compatibility.
@@ -148,6 +163,7 @@ type SchedulerServer interface {
 	DownloadArtifact(*DownloadArtifactRequest, grpc.ServerStreamingServer[ArtifactChunk]) error
 	CancelJob(context.Context, *CancelJobRequest) (*CancelJobResponse, error)
 	ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error)
+	RegisterWorkerStream(grpc.BidiStreamingServer[WorkerMsg, SchedulerMsg]) error
 	mustEmbedUnimplementedSchedulerServer()
 }
 
@@ -178,6 +194,9 @@ func (UnimplementedSchedulerServer) CancelJob(context.Context, *CancelJobRequest
 }
 func (UnimplementedSchedulerServer) ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListJobs not implemented")
+}
+func (UnimplementedSchedulerServer) RegisterWorkerStream(grpc.BidiStreamingServer[WorkerMsg, SchedulerMsg]) error {
+	return status.Error(codes.Unimplemented, "method RegisterWorkerStream not implemented")
 }
 func (UnimplementedSchedulerServer) mustEmbedUnimplementedSchedulerServer() {}
 func (UnimplementedSchedulerServer) testEmbeddedByValue()                   {}
@@ -312,6 +331,13 @@ func _Scheduler_ListJobs_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Scheduler_RegisterWorkerStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(SchedulerServer).RegisterWorkerStream(&grpc.GenericServerStream[WorkerMsg, SchedulerMsg]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Scheduler_RegisterWorkerStreamServer = grpc.BidiStreamingServer[WorkerMsg, SchedulerMsg]
+
 // Scheduler_ServiceDesc is the grpc.ServiceDesc for Scheduler service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -350,6 +376,12 @@ var Scheduler_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "DownloadArtifact",
 			Handler:       _Scheduler_DownloadArtifact_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "RegisterWorkerStream",
+			Handler:       _Scheduler_RegisterWorkerStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "proto/v1/scheduler.proto",

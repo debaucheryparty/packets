@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/debaucheryparty/packets/internal/worker"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
+	pb "github.com/debaucheryparty/packets/proto/v1"
 )
 
 var (
@@ -17,9 +17,13 @@ var (
 	ErrWorkerNotFound     = errors.New("worker not found")
 )
 
+type JobExecutor interface {
+	Execute(ctx context.Context, job apitypes.Job) (apitypes.ExecutionResult, error)
+}
+
 type WorkerNode struct {
 	ID            string
-	Executor      *worker.Executor
+	Executor      JobExecutor
 	Healthy       bool
 	Draining      bool
 	ActiveJobs    int
@@ -27,6 +31,101 @@ type WorkerNode struct {
 	Labels        map[string]string
 	Capabilities  []string
 	LastHeartbeat time.Time
+}
+
+type RemoteWorkerExecutor struct {
+	workerID  string
+	sendCh    chan *pb.SchedulerMsg
+	pendingMu sync.Mutex
+	pending   map[apitypes.JobID]chan *pb.WorkerJobResult
+}
+
+func NewRemoteWorkerExecutor(workerID string, sendCh chan *pb.SchedulerMsg) *RemoteWorkerExecutor {
+	return &RemoteWorkerExecutor{
+		workerID: workerID,
+		sendCh:   sendCh,
+		pending:  make(map[apitypes.JobID]chan *pb.WorkerJobResult),
+	}
+}
+
+func (r *RemoteWorkerExecutor) Execute(ctx context.Context, job apitypes.Job) (apitypes.ExecutionResult, error) {
+	resultCh := make(chan *pb.WorkerJobResult, 1)
+	r.pendingMu.Lock()
+	r.pending[job.ID] = resultCh
+	r.pendingMu.Unlock()
+
+	defer func() {
+		r.pendingMu.Lock()
+		delete(r.pending, job.ID)
+		r.pendingMu.Unlock()
+	}()
+
+	assignMsg := &pb.SchedulerMsg{
+		Payload: &pb.SchedulerMsg_Assign{
+			Assign: &pb.JobAssignment{
+				JobId:       string(job.ID),
+				Toolchain:   string(job.Toolchain),
+				CommandArgs: job.CommandArgs,
+				SnapshotRef: job.SnapshotRef,
+				DockerImage: job.Image,
+				Runner:      string(job.Runner),
+			},
+		},
+	}
+
+	select {
+	case r.sendCh <- assignMsg:
+	case <-ctx.Done():
+		return apitypes.ExecutionResult{}, ctx.Err()
+	}
+
+	select {
+	case res := <-resultCh:
+		if res == nil {
+			return apitypes.ExecutionResult{}, errors.New("remote worker disconnected")
+		}
+		var err error
+		if res.ErrorMessage != "" {
+			err = errors.New(res.ErrorMessage)
+		}
+		return apitypes.ExecutionResult{
+			ExitCode: int(res.ExitCode),
+			Stdout:   res.Stdout,
+			Stderr:   res.Stderr,
+			Error:    err,
+		}, nil
+	case <-ctx.Done():
+		cancelMsg := &pb.SchedulerMsg{
+			Payload: &pb.SchedulerMsg_Cancel{
+				Cancel: &pb.JobCancellation{JobId: string(job.ID)},
+			},
+		}
+		select {
+		case r.sendCh <- cancelMsg:
+		default:
+		}
+		return apitypes.ExecutionResult{}, ctx.Err()
+	}
+}
+
+func (r *RemoteWorkerExecutor) DeliverResult(res *pb.WorkerJobResult) {
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+	if ch, ok := r.pending[apitypes.JobID(res.JobId)]; ok {
+		select {
+		case ch <- res:
+		default:
+		}
+	}
+}
+
+func (r *RemoteWorkerExecutor) Close() {
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+	for _, ch := range r.pending {
+		close(ch)
+	}
+	r.pending = make(map[apitypes.JobID]chan *pb.WorkerJobResult)
 }
 
 type WorkerPoolMetrics struct {
@@ -67,6 +166,13 @@ func (w *WorkerPool) RegisterWorker(node *WorkerNode) {
 		node.LastHeartbeat = time.Now().UTC()
 	}
 	w.workers[node.ID] = node
+}
+
+func (w *WorkerPool) GetWorker(id string) (*WorkerNode, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	node, ok := w.workers[id]
+	return node, ok
 }
 
 func (w *WorkerPool) UnregisterWorker(id string) {

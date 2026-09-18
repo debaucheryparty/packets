@@ -45,6 +45,10 @@ func (d *Dispatcher) SetWorkerPool(wp *WorkerPool) {
 	d.workerPool = wp
 }
 
+func (d *Dispatcher) WorkerPool() *WorkerPool {
+	return d.workerPool
+}
+
 func (d *Dispatcher) Submit(ctx context.Context, req apitypes.BuildRequest, cacheKey, owner string) (apitypes.JobID, bool, error) {
 	if ref, hit, err := d.store.Lookup(ctx, cacheKey); err == nil && hit {
 		d.logger.InfoContext(ctx, "cache hit", slog.String("cache_key", cacheKey), slog.String("ref", string(ref)))

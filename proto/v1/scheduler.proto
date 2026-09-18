@@ -11,6 +11,7 @@ service Scheduler {
   rpc DownloadArtifact(DownloadArtifactRequest) returns (stream ArtifactChunk);
   rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
   rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+  rpc RegisterWorkerStream(stream WorkerMsg) returns (stream SchedulerMsg);
 }
 
 message ClearCacheRequest {
@@ -91,6 +92,67 @@ message JobSummary {
 
 message ListJobsResponse {
   repeated JobSummary jobs = 1;
+}
+
+message WorkerMsg {
+  oneof payload {
+    WorkerHello hello = 1;
+    WorkerHeartbeat heartbeat = 2;
+    WorkerJobResult result = 3;
+    WorkerJobLog log = 4;
+  }
+}
+
+message WorkerHello {
+  string worker_id = 1;
+  string node_name = 2;
+  string arch = 3;
+  int32 cores = 4;
+  int32 max_jobs = 5;
+  bool docker_only = 6;
+}
+
+message WorkerHeartbeat {
+  string worker_id = 1;
+}
+
+message WorkerJobResult {
+  string job_id = 1;
+  int32 exit_code = 2;
+  string stdout = 3;
+  string stderr = 4;
+  string error_message = 5;
+}
+
+message WorkerJobLog {
+  string job_id = 1;
+  string line = 2;
+}
+
+message SchedulerMsg {
+  oneof payload {
+    SchedulerAck ack = 1;
+    JobAssignment assign = 2;
+    JobCancellation cancel = 3;
+  }
+}
+
+message SchedulerAck {
+  bool success = 1;
+  string message = 2;
+}
+
+message JobAssignment {
+  string job_id = 1;
+  string toolchain = 2;
+  repeated string command_args = 3;
+  string snapshot_ref = 4;
+  string docker_image = 5;
+  string runner = 6;
+}
+
+message JobCancellation {
+  string job_id = 1;
 }
 
 enum JobState {

@@ -3,8 +3,10 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/debaucheryparty/packets/internal/policy"
 	"github.com/debaucheryparty/packets/internal/provider"
@@ -366,5 +368,107 @@ func mapState(state apitypes.JobState) pb.JobState {
 		return pb.JobState_JOB_STATE_FAILED
 	default:
 		return pb.JobState_JOB_STATE_UNSPECIFIED
+	}
+}
+
+func (s *Server) RegisterWorkerStream(stream pb.Scheduler_RegisterWorkerStreamServer) error {
+	ctx := stream.Context()
+	wp := s.dispatcher.WorkerPool()
+	if wp == nil {
+		return status.Error(codes.Unavailable, "worker pool not configured on scheduler")
+	}
+
+	firstMsg, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	hello := firstMsg.GetHello()
+	if hello == nil {
+		return status.Error(codes.InvalidArgument, "first message must be WorkerHello")
+	}
+
+	workerID := hello.WorkerId
+	if workerID == "" {
+		workerID = fmt.Sprintf("worker-%d", time.Now().UnixNano())
+	}
+
+	sendCh := make(chan *pb.SchedulerMsg, 32)
+	remoteExec := NewRemoteWorkerExecutor(workerID, sendCh)
+
+	maxJobs := int(hello.MaxJobs)
+	if maxJobs <= 0 {
+		maxJobs = 2
+	}
+
+	node := &WorkerNode{
+		ID:            workerID,
+		Executor:      remoteExec,
+		Healthy:       true,
+		MaxJobs:       maxJobs,
+		LastHeartbeat: time.Now().UTC(),
+		Labels: map[string]string{
+			"name": hello.NodeName,
+			"arch": hello.Arch,
+		},
+	}
+	wp.RegisterWorker(node)
+	defer func() {
+		wp.UnregisterWorker(workerID)
+		remoteExec.Close()
+	}()
+
+	_ = stream.Send(&pb.SchedulerMsg{
+		Payload: &pb.SchedulerMsg_Ack{
+			Ack: &pb.SchedulerAck{
+				Success: true,
+				Message: fmt.Sprintf("worker %s registered successfully", workerID),
+			},
+		},
+	})
+
+	sendErrCh := make(chan error, 1)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-sendCh:
+				if !ok {
+					return
+				}
+				if err := stream.Send(msg); err != nil {
+					sendErrCh <- err
+					return
+				}
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-sendErrCh:
+			return err
+		default:
+		}
+
+		msg, err := stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) || ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+
+		if hb := msg.GetHeartbeat(); hb != nil {
+			_ = wp.Heartbeat(workerID)
+		} else if res := msg.GetResult(); res != nil {
+			remoteExec.DeliverResult(res)
+		} else if l := msg.GetLog(); l != nil {
+			if s.logBroker != nil {
+				s.logBroker.Publish(apitypes.JobID(l.JobId), l.Line)
+			}
+		}
 	}
 }
