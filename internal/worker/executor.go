@@ -173,6 +173,13 @@ func (e *Executor) Execute(ctx context.Context, job apitypes.Job) (apitypes.Exec
 			}
 		}
 
+		for _, wrapper := range []string{"gradlew", "mvnw"} {
+			wPath := filepath.Join(srcDir, wrapper)
+			if fi, err := os.Stat(wPath); err == nil && !fi.IsDir() && fi.Mode()&0o111 == 0 {
+				_ = os.Chmod(wPath, fi.Mode()|0o755)
+			}
+		}
+
 		result, err := e.docker.Run(ctx, RunOpts{
 			Image:     image,
 			MountPath: srcDir,
@@ -242,6 +249,20 @@ func (e *Executor) executeHost(ctx context.Context, job apitypes.Job, srcDir str
 	if err := e.hostPolicy.Validate(cleanedSrcDir, command); err != nil {
 		return apitypes.ExecutionResult{ExitCode: 1, Error: err}, nil
 	}
+
+	if len(command) > 0 && !filepath.IsAbs(command[0]) {
+		candidate := filepath.Join(cleanedSrcDir, command[0])
+		if fi, err := os.Stat(candidate); err == nil && !fi.IsDir() && fi.Mode()&0o111 == 0 {
+			_ = os.Chmod(candidate, fi.Mode()|0o755)
+		}
+	}
+	for _, wrapper := range []string{"gradlew", "mvnw"} {
+		wPath := filepath.Join(cleanedSrcDir, wrapper)
+		if fi, err := os.Stat(wPath); err == nil && !fi.IsDir() && fi.Mode()&0o111 == 0 {
+			_ = os.Chmod(wPath, fi.Mode()|0o755)
+		}
+	}
+
 	e.logger.InfoContext(ctx, "executing on trusted host runner", slog.String("job_id", string(job.ID)), slog.String("src_dir", cleanedSrcDir))
 
 	cmd.Dir = cleanedSrcDir
@@ -249,6 +270,29 @@ func (e *Executor) executeHost(ctx context.Context, job apitypes.Job, srcDir str
 		cmd.Env = SanitizeHostEnvironment(os.Environ())
 	} else {
 		cmd.Env = os.Environ()
+	}
+
+	hasAndroidHome := false
+	for _, env := range cmd.Env {
+		if strings.HasPrefix(env, "ANDROID_HOME=") || strings.HasPrefix(env, "ANDROID_SDK_ROOT=") {
+			hasAndroidHome = true
+			break
+		}
+	}
+	if !hasAndroidHome {
+		homeDir, _ := os.UserHomeDir()
+		candidates := []string{
+			filepath.Join(homeDir, "android-sdk"),
+			filepath.Join(homeDir, "Android", "Sdk"),
+			"/opt/android-sdk",
+			"/usr/local/lib/android/sdk",
+		}
+		for _, c := range candidates {
+			if fi, err := os.Stat(c); err == nil && fi.IsDir() {
+				cmd.Env = append(cmd.Env, "ANDROID_HOME="+c, "ANDROID_SDK_ROOT="+c)
+				break
+			}
+		}
 	}
 
 	owner := job.Owner

@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -52,6 +51,31 @@ func (a *AndroidResolver) checkJDK() ToolchainRequirement {
 	return req
 }
 
+func resolveAndroidSDK() string {
+	sdkRoot := os.Getenv("ANDROID_HOME")
+	if sdkRoot == "" {
+		sdkRoot = os.Getenv("ANDROID_SDK_ROOT")
+	}
+	if sdkRoot != "" {
+		if fi, err := os.Stat(sdkRoot); err == nil && fi.IsDir() {
+			return sdkRoot
+		}
+	}
+	homeDir, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(homeDir, "android-sdk"),
+		filepath.Join(homeDir, "Android", "Sdk"),
+		"/opt/android-sdk",
+		"/usr/local/lib/android/sdk",
+	}
+	for _, c := range candidates {
+		if fi, err := os.Stat(c); err == nil && fi.IsDir() {
+			return c
+		}
+	}
+	return ""
+}
+
 func (a *AndroidResolver) checkAndroidSDK() ToolchainRequirement {
 	req := ToolchainRequirement{
 		Name:       "Android SDK",
@@ -59,22 +83,11 @@ func (a *AndroidResolver) checkAndroidSDK() ToolchainRequirement {
 		PrepareCmd: "mkdir -p $ANDROID_HOME/cmdline-tools && wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && unzip -q commandlinetools-*.zip -d $ANDROID_HOME/cmdline-tools/latest",
 	}
 
-	sdkRoot := os.Getenv("ANDROID_HOME")
-	if sdkRoot == "" {
-		sdkRoot = os.Getenv("ANDROID_SDK_ROOT")
-	}
-	if sdkRoot == "" && runtime.GOOS == "linux" {
-		if _, err := os.Stat("/opt/android-sdk"); err == nil {
-			sdkRoot = "/opt/android-sdk"
-		}
-	}
-
+	sdkRoot := resolveAndroidSDK()
 	if sdkRoot != "" {
-		if fi, err := os.Stat(sdkRoot); err == nil && fi.IsDir() {
-			req.Status = StatusOk
-			req.Details = sdkRoot
-			return req
-		}
+		req.Status = StatusOk
+		req.Details = sdkRoot
+		return req
 	}
 
 	req.Status = StatusMissing
@@ -90,10 +103,7 @@ func (a *AndroidResolver) checkPlatform(version string) ToolchainRequirement {
 		PrepareCmd: fmt.Sprintf("sdkmanager \"platforms;android-%s\"", version),
 	}
 
-	sdkRoot := os.Getenv("ANDROID_HOME")
-	if sdkRoot == "" {
-		sdkRoot = os.Getenv("ANDROID_SDK_ROOT")
-	}
+	sdkRoot := resolveAndroidSDK()
 	if sdkRoot != "" {
 		platformDir := filepath.Join(sdkRoot, "platforms", "android-"+version)
 		if fi, err := os.Stat(platformDir); err == nil && fi.IsDir() {
@@ -117,10 +127,7 @@ func (a *AndroidResolver) checkBuildTools(platformVersion string) ToolchainRequi
 		PrepareCmd: fmt.Sprintf("sdkmanager \"build-tools;%s\"", buildToolsVersion),
 	}
 
-	sdkRoot := os.Getenv("ANDROID_HOME")
-	if sdkRoot == "" {
-		sdkRoot = os.Getenv("ANDROID_SDK_ROOT")
-	}
+	sdkRoot := resolveAndroidSDK()
 	if sdkRoot != "" {
 		btDir := filepath.Join(sdkRoot, "build-tools", buildToolsVersion)
 		if fi, err := os.Stat(btDir); err == nil && fi.IsDir() {
