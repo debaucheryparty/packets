@@ -1,9 +1,11 @@
 package tests
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -75,5 +77,25 @@ func TestProvider_NormalizeWebhookState(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("NormalizeWebhookState(%q, %q) = %v, want %v", tt.status, tt.conclusion, got, tt.want)
 		}
+	}
+}
+
+func TestProvider_CircleCI_EmptyConfig(t *testing.T) {
+	ctx := context.Background()
+	cci := provider.NewCircleCI(nil, "", "")
+
+	_, err := cci.Dispatch(ctx, apitypes.Job{ID: "job-cci"})
+	if !errors.Is(err, provider.ErrProviderExhausted) {
+		t.Errorf("expected ErrProviderExhausted on Dispatch, got %v", err)
+	}
+
+	st, err := cci.Status(ctx, "job-cci")
+	if err != nil || st != apitypes.JobStateSucceeded {
+		t.Errorf("expected Status JobStateSucceeded, got %v, err=%v", st, err)
+	}
+
+	_, err = cci.FetchArtifact(ctx, "job-cci")
+	if !errors.Is(err, provider.ErrProviderExhausted) {
+		t.Errorf("expected ErrProviderExhausted on FetchArtifact, got %v", err)
 	}
 }
