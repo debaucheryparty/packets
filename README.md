@@ -126,6 +126,19 @@ Full guides, CLI references, and architecture deep dives are available in the [`
 
 ---
 
+## Screenshots
+
+### Peer Fleet Status & Workspace Dashboard
+![Peer Fleet and Queue Dashboard](./archive/tui-fleet-status.png)
+
+### Remote Android Emulator Streaming
+![Android Remote Emulator Session](./archive/android-remote-session.png)
+
+### Artifact Extraction & Download
+![Artifact Extraction](./archive/artifact-download.png)
+
+---
+
 ## License
 
 MIT © [Sahil](https://github.com/aikyaam) / [debaucheryparty](https://github.com/debaucheryparty)
