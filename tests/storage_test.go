@@ -257,3 +257,67 @@ func TestJobStore_FileBackedWAL_CrashRecoveryAndConcurrency(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestJobStore_Subspaces(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	sub := apitypes.Subspace{
+		ID:            "sub_123",
+		ProjectID:     "proj-android",
+		OwnerID:       "user-alice",
+		WorkerID:      "worker-node-1",
+		WorkspaceID:   "ws_android_01",
+		EnvironmentID: "env_jdk21",
+		State:         apitypes.SubspaceReady,
+		CreatedAt:     now,
+		LastUsedAt:    now,
+		Metadata: map[string]string{
+			"toolchain": "kotlin",
+			"variant":   "debug",
+		},
+	}
+
+	if err := s.CreateSubspace(ctx, sub); err != nil {
+		t.Fatalf("CreateSubspace failed: %v", err)
+	}
+
+	got, err := s.GetSubspace(ctx, "sub_123")
+	if err != nil {
+		t.Fatalf("GetSubspace failed: %v", err)
+	}
+	if got.ID != sub.ID || got.ProjectID != sub.ProjectID || got.OwnerID != sub.OwnerID ||
+		got.WorkerID != sub.WorkerID || got.WorkspaceID != sub.WorkspaceID ||
+		got.EnvironmentID != sub.EnvironmentID || got.State != apitypes.SubspaceReady {
+		t.Errorf("GetSubspace mismatch: got %+v, want %+v", got, sub)
+	}
+	if got.Metadata["toolchain"] != "kotlin" || got.Metadata["variant"] != "debug" {
+		t.Errorf("metadata mismatch: got %+v", got.Metadata)
+	}
+
+	if err := s.UpdateSubspaceState(ctx, "sub_123", apitypes.SubspaceBusy); err != nil {
+		t.Fatalf("UpdateSubspaceState failed: %v", err)
+	}
+	got2, err := s.GetSubspace(ctx, "sub_123")
+	if err != nil || got2.State != apitypes.SubspaceBusy {
+		t.Errorf("expected state busy, got %v (err=%v)", got2.State, err)
+	}
+
+	if err := s.TouchSubspace(ctx, "sub_123"); err != nil {
+		t.Fatalf("TouchSubspace failed: %v", err)
+	}
+
+	list, err := s.ListSubspaces(ctx, "user-alice", "proj-android")
+	if err != nil || len(list) != 1 {
+		t.Fatalf("ListSubspaces expected 1 item, got %d (err=%v)", len(list), err)
+	}
+
+	if err := s.DeleteSubspace(ctx, "sub_123"); err != nil {
+		t.Fatalf("DeleteSubspace failed: %v", err)
+	}
+	_, err = s.GetSubspace(ctx, "sub_123")
+	if !errors.Is(err, storage.ErrSubspaceNotFound) {
+		t.Errorf("expected ErrSubspaceNotFound after delete, got %v", err)
+	}
+}

@@ -171,6 +171,7 @@ type JobID string
 type Job struct {
 	ID            JobID
 	ProjectID     string
+	SubspaceID    string
 	Toolchain     Toolchain
 	CacheKey      string
 	State         JobState
@@ -190,6 +191,7 @@ type Job struct {
 
 type BuildRequest struct {
 	ProjectID     string
+	SubspaceID    string
 	Toolchain     Toolchain
 	DockerImage   string
 	Runner        RunnerName
@@ -215,3 +217,35 @@ type ExecutionResult struct {
 }
 
 type ArtifactRef string
+
+type SubspaceState string
+
+const (
+	SubspaceCreating   SubspaceState = "creating"
+	SubspaceReady      SubspaceState = "ready"
+	SubspaceBusy       SubspaceState = "busy"
+	SubspaceStopping   SubspaceState = "stopping"
+	SubspaceStopped    SubspaceState = "stopped"
+	SubspaceError      SubspaceState = "error"
+	SubspaceDestroying SubspaceState = "destroying"
+	SubspaceDestroyed  SubspaceState = "destroyed"
+)
+
+func (s SubspaceState) String() string { return string(s) }
+
+func (s SubspaceState) IsActive() bool {
+	return s == SubspaceReady || s == SubspaceBusy
+}
+
+type Subspace struct {
+	ID            string            `json:"id"`
+	ProjectID     string            `json:"project_id"`
+	OwnerID       string            `json:"owner_id"`
+	WorkerID      string            `json:"worker_id"`
+	WorkspaceID   string            `json:"workspace_id"`
+	EnvironmentID string            `json:"environment_id"`
+	State         SubspaceState     `json:"state"`
+	CreatedAt     time.Time         `json:"created_at"`
+	LastUsedAt    time.Time         `json:"last_used_at"`
+	Metadata      map[string]string `json:"metadata"`
+}

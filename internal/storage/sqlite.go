@@ -28,9 +28,13 @@ var migration003 string
 //go:embed migrations/004_approval_storage.sql
 var migration004 string
 
+//go:embed migrations/005_subspaces.sql
+var migration005 string
+
 var (
-	ErrJobNotFound = errors.New("job not found")
-	ErrCacheMiss   = errors.New("cache miss")
+	ErrJobNotFound      = errors.New("job not found")
+	ErrCacheMiss        = errors.New("cache miss")
+	ErrSubspaceNotFound = errors.New("subspace not found")
 )
 
 type JobStore struct {
@@ -526,4 +530,146 @@ func (s *JobStore) ExpireTicketForTest(ctx context.Context, id string) error {
 
 	_, err := s.db.ExecContext(ctx, `UPDATE approval_tickets SET expires_at = ? WHERE id = ?`, time.Now().UTC().Add(-1*time.Hour), id)
 	return err
+}
+
+func (s *JobStore) CreateSubspace(ctx context.Context, sub apitypes.Subspace) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	metaJSON, _ := json.Marshal(sub.Metadata)
+	if sub.Metadata == nil {
+		metaJSON = []byte("{}")
+	}
+
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO subspaces (id, project_id, owner_id, worker_id, workspace_id, environment_id, state, created_at, last_used_at, metadata)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sub.ID, sub.ProjectID, sub.OwnerID, sub.WorkerID, sub.WorkspaceID, sub.EnvironmentID,
+		string(sub.State), sub.CreatedAt.UTC(), sub.LastUsedAt.UTC(), string(metaJSON),
+	)
+	if err != nil {
+		return fmt.Errorf("CreateSubspace %s: %w", sub.ID, err)
+	}
+	return nil
+}
+
+func (s *JobStore) GetSubspace(ctx context.Context, id string) (apitypes.Subspace, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, project_id, owner_id, worker_id, workspace_id, environment_id, state, created_at, last_used_at, metadata
+		 FROM subspaces WHERE id = ?`, id,
+	)
+	var sub apitypes.Subspace
+	var stateStr, metaJSON string
+	err := row.Scan(
+		&sub.ID, &sub.ProjectID, &sub.OwnerID, &sub.WorkerID, &sub.WorkspaceID, &sub.EnvironmentID,
+		&stateStr, &sub.CreatedAt, &sub.LastUsedAt, &metaJSON,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return apitypes.Subspace{}, ErrSubspaceNotFound
+	}
+	if err != nil {
+		return apitypes.Subspace{}, fmt.Errorf("GetSubspace %s: %w", id, err)
+	}
+	sub.State = apitypes.SubspaceState(stateStr)
+	if metaJSON != "" {
+		_ = json.Unmarshal([]byte(metaJSON), &sub.Metadata)
+	}
+	if sub.Metadata == nil {
+		sub.Metadata = make(map[string]string)
+	}
+	return sub, nil
+}
+
+func (s *JobStore) ListSubspaces(ctx context.Context, ownerID, projectID string) ([]apitypes.Subspace, error) {
+	query := `SELECT id, project_id, owner_id, worker_id, workspace_id, environment_id, state, created_at, last_used_at, metadata FROM subspaces WHERE 1=1`
+	var args []interface{}
+	if ownerID != "" {
+		query += ` AND owner_id = ?`
+		args = append(args, ownerID)
+	}
+	if projectID != "" {
+		query += ` AND project_id = ?`
+		args = append(args, projectID)
+	}
+	query += ` ORDER BY last_used_at DESC`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ListSubspaces: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []apitypes.Subspace
+	for rows.Next() {
+		var sub apitypes.Subspace
+		var stateStr, metaJSON string
+		if err := rows.Scan(
+			&sub.ID, &sub.ProjectID, &sub.OwnerID, &sub.WorkerID, &sub.WorkspaceID, &sub.EnvironmentID,
+			&stateStr, &sub.CreatedAt, &sub.LastUsedAt, &metaJSON,
+		); err != nil {
+			return nil, fmt.Errorf("ListSubspaces scan: %w", err)
+		}
+		sub.State = apitypes.SubspaceState(stateStr)
+		if metaJSON != "" {
+			_ = json.Unmarshal([]byte(metaJSON), &sub.Metadata)
+		}
+		if sub.Metadata == nil {
+			sub.Metadata = make(map[string]string)
+		}
+		results = append(results, sub)
+	}
+	return results, rows.Err()
+}
+
+func (s *JobStore) UpdateSubspaceState(ctx context.Context, id string, state apitypes.SubspaceState) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	now := time.Now().UTC()
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE subspaces SET state = ?, last_used_at = ? WHERE id = ?`,
+		string(state), now, id,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateSubspaceState %s: %w", id, err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrSubspaceNotFound
+	}
+	return nil
+}
+
+func (s *JobStore) TouchSubspace(ctx context.Context, id string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	now := time.Now().UTC()
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE subspaces SET last_used_at = ? WHERE id = ?`,
+		now, id,
+	)
+	if err != nil {
+		return fmt.Errorf("TouchSubspace %s: %w", id, err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrSubspaceNotFound
+	}
+	return nil
+}
+
+func (s *JobStore) DeleteSubspace(ctx context.Context, id string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	res, err := s.db.ExecContext(ctx, `DELETE FROM subspaces WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("DeleteSubspace %s: %w", id, err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrSubspaceNotFound
+	}
+	return nil
 }
