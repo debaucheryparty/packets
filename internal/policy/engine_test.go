@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -72,7 +73,7 @@ func TestPolicyEngine_TicketLifecycle(t *testing.T) {
 	}
 
 	// Replay should fail
-	if err := engine.ValidateAndConsumeTicket(ticket.ID, ec); err != ErrTicketAlreadyUsed {
+	if err := engine.ValidateAndConsumeTicket(ticket.ID, ec); !errors.Is(err, ErrTicketAlreadyUsed) {
 		t.Errorf("expected ErrTicketAlreadyUsed on replay, got %v", err)
 	}
 
@@ -88,7 +89,7 @@ func TestPolicyEngine_TicketLifecycle(t *testing.T) {
 
 	tamperedEC := ec
 	tamperedEC.Command = "make evil"
-	if err := engine.ValidateAndConsumeTicket(ticket2.ID, tamperedEC); err != ErrApprovalMismatch {
+	if err := engine.ValidateAndConsumeTicket(ticket2.ID, tamperedEC); !errors.Is(err, ErrApprovalMismatch) {
 		t.Errorf("expected ErrApprovalMismatch, got %v", err)
 	}
 }

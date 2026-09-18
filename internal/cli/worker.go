@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -299,7 +300,8 @@ func executeWorkerTask(ctx context.Context, assign *pb.JobAssignment, outCh chan
 	exitCode := 0
 	errMsg := ""
 	if waitErr != nil {
-		if exitErr, ok := waitErr.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		} else {
 			exitCode = 1

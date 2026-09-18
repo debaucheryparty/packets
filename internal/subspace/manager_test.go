@@ -10,7 +10,7 @@ import (
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
-func setupTestManager(t *testing.T) (*Manager, *storage.JobStore, string) {
+func setupTestManager(t *testing.T) *Manager {
 	t.Helper()
 	store, err := storage.NewJobStore(context.Background(), ":memory:")
 	if err != nil {
@@ -19,12 +19,11 @@ func setupTestManager(t *testing.T) (*Manager, *storage.JobStore, string) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	tempDir := t.TempDir()
-	mgr := NewManager(store, nil, tempDir)
-	return mgr, store, tempDir
+	return NewManager(store, nil, tempDir)
 }
 
 func TestManager_CreateAndGet(t *testing.T) {
-	mgr, _, _ := setupTestManager(t)
+	mgr := setupTestManager(t)
 	ctx := context.Background()
 
 	sub, err := mgr.Create(ctx, CreateOptions{
@@ -65,7 +64,7 @@ func TestManager_CreateAndGet(t *testing.T) {
 }
 
 func TestManager_List(t *testing.T) {
-	mgr, _, _ := setupTestManager(t)
+	mgr := setupTestManager(t)
 	ctx := context.Background()
 
 	_, err := mgr.Create(ctx, CreateOptions{ProjectID: "p1", OwnerID: "bob"})
@@ -93,7 +92,7 @@ func TestManager_List(t *testing.T) {
 }
 
 func TestManager_PathTraversalPrevention(t *testing.T) {
-	mgr, _, _ := setupTestManager(t)
+	mgr := setupTestManager(t)
 	maliciousSub := apitypes.Subspace{
 		ID:        "sub-1",
 		OwnerID:   "../../etc",
@@ -107,7 +106,7 @@ func TestManager_PathTraversalPrevention(t *testing.T) {
 }
 
 func TestManager_StateTransitionsAndDestroy(t *testing.T) {
-	mgr, _, _ := setupTestManager(t)
+	mgr := setupTestManager(t)
 	ctx := context.Background()
 
 	sub, err := mgr.Create(ctx, CreateOptions{ProjectID: "p-test", OwnerID: "dave"})

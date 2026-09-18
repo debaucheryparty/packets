@@ -1,6 +1,6 @@
 # packets
 
-A remote build execution and caching system designed specifically for developers using low-end laptops.
+Remote development execution platform that offloads heavy builds, test matrices, and shell commands from laptops to remote servers, dedicated VPS boxes, or peer workstations.
 
 [![Release][release-badge]][release-url]
 [![Build Status][actions-badge]][actions-url]
@@ -9,102 +9,123 @@ A remote build execution and caching system designed specifically for developers
 
 [release-badge]: https://img.shields.io/github/v/release/debaucheryparty/packets.svg?label=latest
 [release-url]: https://github.com/debaucheryparty/packets/releases
-[actions-badge]: https://github.com/debaucheryparty/packets/actions/workflows/ci.yml/badge.svg
+[actions-badge]: https://img.shields.io/github/v/debaucheryparty/packets/actions/workflows/ci.yml/badge.svg
 [actions-url]: https://github.com/debaucheryparty/packets/actions/workflows/ci.yml
 [godoc-badge]: https://pkg.go.dev/badge/github.com/debaucheryparty/packets.svg
 [godoc-url]: https://pkg.go.dev/github.com/debaucheryparty/packets
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [mit-url]: https://github.com/debaucheryparty/packets/blob/main/LICENSE
 
-[Setup Guide (Coming Soon)](#) |
-[API Docs (Coming Soon)](#) |
+[Documentation](./docs/README.md) |
+[Architecture](./docs/architecture.md) |
+[Subspaces Guide](./docs/subspaces/README.md) |
 [Releases](https://github.com/debaucheryparty/packets/releases)
 
-## Overview
+---
 
-**Packets** is a remote development execution platform for developers and AI coding agents.
+## The Idea
 
-The core principle:
-> **The developer's machine is the interface. The remote machine performs expensive development work.**
+> **The developer's machine is the interface. The remote machine performs the heavy compute.**
 
-## Why This Project?
+I built **Packets** out of personal necessity. I work on a 5-year-old laptop with only 8GB of RAM. Whenever I tried doing heavy development (compiling large codebases, running Docker containers, building Android or Rust projects, or running local AI tools), my laptop would lag, freeze, and struggle to keep up.
 
-I built **Packets** out of personal necessity. I work on a 5-year-old laptop with only 8GB of RAM. Whenever I tried doing heavy development - compiling large codebases, running Docker containers, building Android or Rust projects, or running local AI tools - my laptop would lag, freeze, and struggle to keep up.
+Upgrading hardware is not always an option, but limited hardware should never stop anyone from building ambitious software. I created Packets so that my laptop can stay fast and responsive as just the editing interface, while all the heavy compilation, container workloads, and testing happen on a remote machine.
 
-Upgrading hardware is not always an option, but limited hardware should never stop anyone from building ambitious software. I created Packets so that my laptop can stay fast and responsive as just the editing interface, while all the heavy compilation, container workloads, and testing happen seamlessly on a remote machine. It made coding enjoyable again without needing expensive new hardware. 
+---
 
-~ [Sahil](https://github.com/aikyaam)
+## What Packets Does
 
-Packets provides:
-* **Remote Development Mode (`packets dev .`)**: Automatic polyglot project detection (Android, Zephyr, Rust, Go, Node, CMake), remote environment checks, workspace sync, and AI instructions generation.
-* **Persistent Remote Workspaces (`packets sync`)**: Incremental file synchronization and full synchronization with remote deletion detection.
-* **Remote Command Execution (`packets exec`)**: Run arbitrary shell commands, compilers, or test suites directly on the remote VPS with real-time log streaming.
-* **Model Context Protocol (`packets mcp`)**: Standardized stdio MCP server for AI IDEs (Cursor, VS Code + Copilot, Claude Desktop, Antigravity) with human-in-the-loop approval and sandboxing.
-* **Environment Manager (`packets env`)**: Automatic toolchain and SDK detection, verification, and provisioning (`detect`, `check`, `prepare`).
+- **Content-Addressable Delta Sync**: Workspaces are split into SHA-256 chunks. Only modified bytes are uploaded, syncing large projects in milliseconds over gRPC.
+- **Persistent Subspaces (`packets subspace`)**: Remote development workspaces that keep compiler daemons (like the Gradle Daemon) and incremental build caches (`target/`, `.gradle/`, `GOCACHE`) warm across commands.
+- **Remote Builds & Tests (`packets build`, `packets test`)**: Automatically detects over 25 language toolchains (Android, Rust, Go, C++, Swift, Python, Node), executes remotely, streams output live, and downloads built artifacts.
+- **Remote Execution & Shell (`packets exec`, `packets subspace shell`)**: Run arbitrary commands or open interactive shells inside the persistent remote workspace.
+- **Peer Worker Clustering (`packets worker join`)**: Turn an idle desktop or secondary laptop into an active compute worker in the cluster.
+- **Model Context Protocol (`packets mcp`)**: Built-in MCP server for AI coding assistants (Claude Desktop, Cursor, Antigravity) with policy-based human approval workflows.
+
+---
+
 ## Installation
 
-Install the pre-compiled executable via our setup script:
-
+### Pre-Compiled Binary
 ```bash
 curl -fsSL https://raw.githubusercontent.com/debaucheryparty/packets/main/scripts/install.sh | bash
 ```
 
-Alternatively, build from source using Go 1.22+:
-
+### Build from Source (Go 1.22+)
 ```bash
-git clone https://github.com/debaucheryparty/packets.git
-cd packets
-go build -o packets ./cmd/packets
+go install github.com/debaucheryparty/packets/cmd/packets@latest
 ```
+
+---
 
 ## Quick Start
 
-### 1. Initialize Remote Development Session
+### 1. Check Server Connection
 ```bash
-packets dev .
-```
-Detects project components, checks remote toolchain readiness, configures AI agent rules (`AGENTS.md`, `.cursor/rules`), and sets up MCP.
-
-### 2. Remote Command Execution
-```bash
-packets exec "./gradlew assembleDebug"
-packets exec "cargo test"
-packets exec -- uname -a
+export PACKETS_SERVER_ADDR="vps.example.com:50051"
+packets status
 ```
 
-### 3. Workspace Synchronization
+### 2. Build Remotely & Auto-Download Artifacts
 ```bash
-# Incremental synchronization
-packets sync .
+cd my-project
 
-# Full synchronization with remote deletion detection
-packets sync --full .
+# Auto-detects toolchain, syncs delta chunks, and downloads outputs
+packets build --wait
 ```
 
-### 4. Environment Inspection & Provisioning
+### 3. Create a Persistent Subspace
 ```bash
-packets env detect .
-packets env check .
-packets env prepare .
+# Allocate a warm remote workspace on your worker
+packets subspace create --project mobile-app --worker vps-worker
+
+# Run incremental builds inside the Subspace
+packets build --subspace sub-xxxxxx --runner host --wait
 ```
 
-### 5. AI Coding Agent MCP Server
-Configure your AI IDE (Cursor, VS Code Claude Dev / Copilot, Claude Desktop) with:
+### 4. Run Tests Remotely
+```bash
+# Streams test execution output directly to your terminal
+packets test
+```
+
+### 5. Execute Commands in Remote Workspace
+```bash
+packets exec "./gradlew tasks"
+packets exec "cargo check"
+```
+
+### 6. Connect AI Coding Assistants (MCP)
+Add Packets to your Claude Desktop or Cursor MCP config:
+
 ```json
 {
   "mcpServers": {
     "packets": {
       "command": "packets",
-      "args": ["mcp"]
+      "args": ["mcp"],
+      "env": {
+        "PACKETS_SERVER_ADDR": "vps.example.com:50051"
+      }
     }
   }
 }
-``` 
+```
 
-## Getting Help
+---
 
-First, see if the answer to your question can be found in our [Documentation](guide.md) or [API Docs](https://pkg.go.dev/github.com/debaucheryparty/packets). If you still need help, feel free to open a GitHub Issue or Discussion!
+## Documentation
+
+Full guides, CLI references, and architecture deep dives are available in the [`docs/`](./docs/README.md) directory:
+
+- [**System Architecture**](./docs/architecture.md): Topology, gRPC control plane, and CAS storage pipeline.
+- [**CLI Reference**](./docs/cli/README.md): Flags, configuration files, and commands.
+- [**Subspaces Guide**](./docs/subspaces/README.md): Persistent workspaces and state machines.
+- [**Android Development**](./docs/toolchains/android.md): Gradle acceleration, ADB forwarding, and SDK discovery.
+- [**MCP Server & Tools**](./docs/mcp/tools.md): Tool schemas for AI agent integrations.
+
+---
 
 ## License
 
-This project is licensed under the [MIT license](LICENSE).
+MIT © [Sahil](https://github.com/aikyaam) / [debaucheryparty](https://github.com/debaucheryparty)

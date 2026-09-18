@@ -3,6 +3,7 @@ package worker
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -137,7 +138,7 @@ func TestTarArchiving(t *testing.T) {
 	extracted := make(map[string]string)
 	for {
 		header, err := tr.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
