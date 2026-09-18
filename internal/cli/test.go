@@ -22,6 +22,7 @@ func NewTestCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		forceFlag    bool
 		waitFlag     bool
 		providerFlag string
+		subspaceFlag string
 	)
 
 	cmd := &cobra.Command{
@@ -83,6 +84,18 @@ Streams test execution logs and reports exit code.`,
 			}
 			defer func() { _ = conn.Close() }()
 
+			if subspaceFlag != "" {
+				subClient := pb.NewSubspaceServiceClient(conn)
+				subResp, err := subClient.GetSubspace(ctx, &pb.GetSubspaceRequest{Id: subspaceFlag})
+				if err != nil {
+					return fmt.Errorf("resolve subspace %s: %w", subspaceFlag, err)
+				}
+				if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
+					return fmt.Errorf("subspace %s is not ready (state: %s)", subspaceFlag, subResp.Subspace.State)
+				}
+				logger.InfoContext(ctx, "targeting subspace", slog.String("subspace_id", subspaceFlag), slog.String("worker", subResp.Subspace.WorkerId))
+			}
+
 			logger.InfoContext(ctx, "uploading workspace for test...")
 			snapshotRef, err := workspace.UploadWorkspace(ctx, conn, absDir, forceFlag)
 			if err != nil {
@@ -121,6 +134,7 @@ Streams test execution logs and reports exit code.`,
 	cmd.Flags().BoolVar(&forceFlag, "force", false, "Force re-upload of workspace")
 	cmd.Flags().BoolVar(&waitFlag, "wait", true, "Wait and stream test logs (default: true)")
 	cmd.Flags().StringVar(&providerFlag, "provider", "", "Named provider from config")
+	cmd.Flags().StringVar(&subspaceFlag, "subspace", "", "Target remote Subspace ID")
 
 	return cmd
 }

@@ -22,6 +22,7 @@ func NewExecCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		artifactFlag []string
 		providerFlag string
 		timeoutFlag  time.Duration
+		subspaceFlag string
 	)
 
 	cmd := &cobra.Command{
@@ -50,6 +51,18 @@ func NewExecCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 				return fmt.Errorf("connect to scheduler: %w", err)
 			}
 			defer func() { _ = conn.Close() }()
+
+			if subspaceFlag != "" {
+				subClient := pb.NewSubspaceServiceClient(conn)
+				subResp, err := subClient.GetSubspace(ctx, &pb.GetSubspaceRequest{Id: subspaceFlag})
+				if err != nil {
+					return fmt.Errorf("resolve subspace %s: %w", subspaceFlag, err)
+				}
+				if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
+					return fmt.Errorf("subspace %s is not ready (state: %s)", subspaceFlag, subResp.Subspace.State)
+				}
+				logger.InfoContext(ctx, "targeting subspace", slog.String("subspace_id", subspaceFlag), slog.String("worker", subResp.Subspace.WorkerId))
+			}
 
 			var snapshotRef string
 			if !noSyncFlag {
@@ -136,6 +149,7 @@ func NewExecCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	cmd.Flags().StringArrayVar(&artifactFlag, "artifact", nil, "Artifact paths to collect after execution")
 	cmd.Flags().StringVar(&providerFlag, "provider", "", "Named provider from config")
 	cmd.Flags().DurationVar(&timeoutFlag, "timeout", 0, "Command execution timeout (e.g. 5m, 30s)")
+	cmd.Flags().StringVar(&subspaceFlag, "subspace", "", "Target remote Subspace ID")
 
 	return cmd
 }

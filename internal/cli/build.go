@@ -31,6 +31,7 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	cmd.Flags().String("provider", "", "Named provider from config")
 	cmd.Flags().Bool("force", false, "Re-upload entire workspace")
 	cmd.Flags().Bool("dry-run", false, "Show what would be uploaded without building")
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
@@ -43,6 +44,7 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		forceFlag, _ := cmd.Flags().GetBool("force")
 		dryRunFlag, _ := cmd.Flags().GetBool("dry-run")
 		providerFlag, _ := cmd.Flags().GetString("provider")
+		subspaceFlag, _ := cmd.Flags().GetString("subspace")
 
 		pwd, err := os.Getwd()
 		if err != nil {
@@ -131,7 +133,7 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			args = append([]string{def.LocalCommand}, args...)
 		}
 
-		return executeViaScheduler(ctx, cfg, logger, def, pwd, args, runner, sourceMode, artifactFlag, waitFlag, forceFlag)
+		return executeViaScheduler(ctx, cfg, logger, def, pwd, args, runner, sourceMode, artifactFlag, waitFlag, forceFlag, subspaceFlag)
 	}
 
 	return cmd
@@ -149,12 +151,25 @@ func executeViaScheduler(
 	artifactPaths []string,
 	wait bool,
 	force bool,
+	subspaceID string,
 ) error {
 	conn, err := DialScheduler(ctx, cfg)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = conn.Close() }()
+
+	if subspaceID != "" {
+		subClient := pb.NewSubspaceServiceClient(conn)
+		subResp, err := subClient.GetSubspace(ctx, &pb.GetSubspaceRequest{Id: subspaceID})
+		if err != nil {
+			return fmt.Errorf("resolve subspace %s: %w", subspaceID, err)
+		}
+		if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
+			return fmt.Errorf("subspace %s is not ready (state: %s)", subspaceID, subResp.Subspace.State)
+		}
+		logger.InfoContext(ctx, "targeting subspace", slog.String("subspace_id", subspaceID), slog.String("worker", subResp.Subspace.WorkerId))
+	}
 
 	var snapshotRef string
 	if sourceMode == apitypes.SourceModeWorkspace {

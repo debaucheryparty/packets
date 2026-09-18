@@ -56,6 +56,7 @@ func main() {
 		cli.NewWorkerCommand(cfg, logger),
 		cli.NewJobsCommand(cfg, logger),
 		cli.NewCancelCommand(cfg, logger),
+		cli.NewSubspaceCommand(cfg, logger),
 	)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
