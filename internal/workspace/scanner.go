@@ -59,7 +59,7 @@ func ScanWorkspace(dir string, extraIgnore []string) (*apitypes.WorkspaceManifes
 
 		wf := apitypes.WorkspaceFile{
 			Path:  normRel,
-			Mode:  normalizeMode(uint32(info.Mode()), d.IsDir()),
+			Mode:  normalizeMode(normRel, uint32(info.Mode()), d.IsDir()),
 			IsDir: d.IsDir(),
 		}
 
@@ -129,18 +129,26 @@ func computeRootHash(files []apitypes.WorkspaceFile) (string, error) {
 			Path string
 			Hash string
 			Mode uint32
-		}{f.Path, f.Hash, normalizeMode(f.Mode, f.IsDir)}); err != nil {
+		}{f.Path, f.Hash, normalizeMode(f.Path, f.Mode, f.IsDir)}); err != nil {
 			return "", err
 		}
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func normalizeMode(mode uint32, isDir bool) uint32 {
+func normalizeMode(path string, mode uint32, isDir bool) uint32 {
 	if isDir {
 		return 0o755
 	}
 	if mode&0o111 != 0 {
+		return 0o755
+	}
+	base := filepath.Base(path)
+	if base == "gradlew" || base == "mvnw" || base == "configure" {
+		return 0o755
+	}
+	ext := strings.ToLower(filepath.Ext(base))
+	if ext == ".sh" || ext == ".bash" {
 		return 0o755
 	}
 	return 0o644

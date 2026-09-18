@@ -166,7 +166,7 @@ func writeFile(dest string, mode os.FileMode, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
-	normMode := os.FileMode(normalizeMode(uint32(mode), false))
+	normMode := os.FileMode(normalizeMode(dest, uint32(mode), false))
 	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, normMode)
 	if err != nil {
 		return err
