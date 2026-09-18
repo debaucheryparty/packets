@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/provider"
@@ -15,25 +16,28 @@ import (
 )
 
 type Dispatcher struct {
-	logger       *slog.Logger
-	store        *storage.JobStore
-	stateMachine *StateMachine
-	providers    map[apitypes.ProviderName]provider.BuildProvider
-	executor     *worker.Executor
-	limiter      *QuotaLimiter
-	logBroker    *LogBroker
-	workerPool   *WorkerPool
+	logger        *slog.Logger
+	store         *storage.JobStore
+	stateMachine  *StateMachine
+	providers     map[apitypes.ProviderName]provider.BuildProvider
+	executor      *worker.Executor
+	limiter       *QuotaLimiter
+	logBroker     *LogBroker
+	workerPool    *WorkerPool
+	activeMu      sync.Mutex
+	activeCancels map[apitypes.JobID]context.CancelFunc
 }
 
 func NewDispatcher(logger *slog.Logger, store *storage.JobStore, providers map[apitypes.ProviderName]provider.BuildProvider, executor *worker.Executor, limiter *QuotaLimiter, logBroker *LogBroker) *Dispatcher {
 	return &Dispatcher{
-		logger:       logger,
-		store:        store,
-		stateMachine: NewStateMachine(),
-		providers:    providers,
-		executor:     executor,
-		limiter:      limiter,
-		logBroker:    logBroker,
+		logger:        logger,
+		store:         store,
+		stateMachine:  NewStateMachine(),
+		providers:     providers,
+		executor:      executor,
+		limiter:       limiter,
+		logBroker:     logBroker,
+		activeCancels: make(map[apitypes.JobID]context.CancelFunc),
 	}
 }
 
@@ -102,7 +106,17 @@ func (d *Dispatcher) Submit(ctx context.Context, req apitypes.BuildRequest, cach
 }
 
 func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job) {
+	jobCtx, cancel := context.WithCancel(ctx)
+	d.activeMu.Lock()
+	d.activeCancels[job.ID] = cancel
+	d.activeMu.Unlock()
+
 	defer func() {
+		d.activeMu.Lock()
+		delete(d.activeCancels, job.ID)
+		d.activeMu.Unlock()
+		cancel()
+
 		if d.limiter != nil {
 			d.limiter.Release(job.Owner)
 		}
@@ -111,19 +125,19 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job) {
 		}
 	}()
 
-	_ = d.updateState(ctx, job.ID, apitypes.JobStateDispatched, apitypes.JobStatePending)
+	_ = d.updateState(jobCtx, job.ID, apitypes.JobStateDispatched, apitypes.JobStatePending)
 
 	switch job.Runner {
 	case apitypes.RunnerDocker:
-		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
+		_ = d.updateState(jobCtx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
 		var result apitypes.ExecutionResult
 		var err error
 		if d.workerPool != nil && d.workerPool.WorkerCount() > 0 {
-			result, _, err = d.workerPool.ExecuteOnWorker(ctx, job)
+			result, _, err = d.workerPool.ExecuteOnWorker(jobCtx, job)
 		} else if d.executor != nil {
-			result, err = d.executor.Execute(ctx, job)
+			result, err = d.executor.Execute(jobCtx, job)
 		} else {
-			_ = d.store.FailJob(ctx, job.ID, "executor not configured")
+			_ = d.store.FailJob(jobCtx, job.ID, "executor not configured")
 			return
 		}
 		if err != nil || result.ExitCode != 0 {
@@ -133,39 +147,39 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job) {
 			} else {
 				errMsg = fmt.Sprintf("exited %d: %s", result.ExitCode, result.Stderr)
 			}
-			_ = d.store.FailJob(ctx, job.ID, errMsg)
+			_ = d.store.FailJob(jobCtx, job.ID, errMsg)
 			JobsFailedTotal.WithLabelValues(string(job.Toolchain), string(job.Runner)).Inc()
 			return
 		}
-		if err := d.store.CompleteJob(ctx, job.ID, result.ArtifactRef, job.CacheKey); err != nil {
-			d.logger.ErrorContext(ctx, "CompleteJob failed", slog.String("job_id", string(job.ID)), slog.String("err", err.Error()))
+		if err := d.store.CompleteJob(jobCtx, job.ID, result.ArtifactRef, job.CacheKey); err != nil {
+			d.logger.ErrorContext(jobCtx, "CompleteJob failed", slog.String("job_id", string(job.ID)), slog.String("err", err.Error()))
 		} else {
-			d.logger.InfoContext(ctx, "job succeeded", slog.String("job_id", string(job.ID)), slog.Duration("duration", time.Since(job.SubmittedAt)), slog.String("runner", string(job.Runner)))
+			d.logger.InfoContext(jobCtx, "job succeeded", slog.String("job_id", string(job.ID)), slog.Duration("duration", time.Since(job.SubmittedAt)), slog.String("runner", string(job.Runner)))
 		}
 
 	case apitypes.RunnerGitHub:
 		p, ok := d.providers[apitypes.ProviderGitHubActions]
 		if !ok {
-			_ = d.store.FailJob(ctx, job.ID, "github provider not configured")
+			_ = d.store.FailJob(jobCtx, job.ID, "github provider not configured")
 			return
 		}
-		if _, err := p.Dispatch(ctx, job); err != nil {
-			_ = d.store.FailJob(ctx, job.ID, err.Error())
+		if _, err := p.Dispatch(jobCtx, job); err != nil {
+			_ = d.store.FailJob(jobCtx, job.ID, err.Error())
 			JobsFailedTotal.WithLabelValues(string(job.Toolchain), string(job.Runner)).Inc()
 			return
 		}
-		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
+		_ = d.updateState(jobCtx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
 
 	case apitypes.RunnerHost, apitypes.RunnerLocal:
-		_ = d.updateState(ctx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
+		_ = d.updateState(jobCtx, job.ID, apitypes.JobStateRunning, apitypes.JobStateDispatched)
 		var result apitypes.ExecutionResult
 		var err error
 		if d.workerPool != nil && d.workerPool.WorkerCount() > 0 {
-			result, _, err = d.workerPool.ExecuteOnWorker(ctx, job)
+			result, _, err = d.workerPool.ExecuteOnWorker(jobCtx, job)
 		} else if d.executor != nil {
-			result, err = d.executor.Execute(ctx, job)
+			result, err = d.executor.Execute(jobCtx, job)
 		} else {
-			_ = d.store.FailJob(ctx, job.ID, "executor not configured")
+			_ = d.store.FailJob(jobCtx, job.ID, "executor not configured")
 			return
 		}
 		if err != nil || result.ExitCode != 0 {
@@ -179,17 +193,17 @@ func (d *Dispatcher) dispatchAsync(ctx context.Context, job apitypes.Job) {
 			} else {
 				errMsg = fmt.Sprintf("exited %d", result.ExitCode)
 			}
-			_ = d.store.FailJob(ctx, job.ID, errMsg)
+			_ = d.store.FailJob(jobCtx, job.ID, errMsg)
 			return
 		}
-		if err := d.store.CompleteJob(ctx, job.ID, result.ArtifactRef, job.CacheKey); err != nil {
-			d.logger.ErrorContext(ctx, "CompleteJob failed", slog.String("job_id", string(job.ID)), slog.String("err", err.Error()))
+		if err := d.store.CompleteJob(jobCtx, job.ID, result.ArtifactRef, job.CacheKey); err != nil {
+			d.logger.ErrorContext(jobCtx, "CompleteJob failed", slog.String("job_id", string(job.ID)), slog.String("err", err.Error()))
 		} else {
-			d.logger.InfoContext(ctx, "job succeeded", slog.String("job_id", string(job.ID)), slog.Duration("duration", time.Since(job.SubmittedAt)), slog.String("runner", string(job.Runner)))
+			d.logger.InfoContext(jobCtx, "job succeeded", slog.String("job_id", string(job.ID)), slog.Duration("duration", time.Since(job.SubmittedAt)), slog.String("runner", string(job.Runner)))
 		}
 
 	default:
-		_ = d.store.FailJob(ctx, job.ID, fmt.Sprintf("unknown runner: %s", job.Runner))
+		_ = d.store.FailJob(jobCtx, job.ID, fmt.Sprintf("unknown runner: %s", job.Runner))
 	}
 }
 
@@ -199,6 +213,52 @@ func (d *Dispatcher) updateState(ctx context.Context, id apitypes.JobID, to, fro
 		return err
 	}
 	return d.store.UpdateJobState(ctx, id, to)
+}
+
+func (d *Dispatcher) Cancel(ctx context.Context, id apitypes.JobID) (bool, error) {
+	d.activeMu.Lock()
+	cancel, running := d.activeCancels[id]
+	if running {
+		cancel()
+		delete(d.activeCancels, id)
+	}
+	d.activeMu.Unlock()
+
+	job, err := d.store.GetJob(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if job.State == apitypes.JobStateSucceeded || job.State == apitypes.JobStateFailed {
+		return false, nil
+	}
+
+	_ = d.store.FailJob(ctx, id, "job cancelled by user")
+	d.logger.InfoContext(ctx, "job cancelled", slog.String("job_id", string(id)))
+	return true, nil
+}
+
+func (d *Dispatcher) ReapStaleJobs(ctx context.Context, timeout time.Duration) (int, error) {
+	jobs, err := d.store.ListJobsByState(ctx, apitypes.JobStatePending, apitypes.JobStateDispatched, apitypes.JobStateRunning)
+	if err != nil {
+		return 0, err
+	}
+	reaped := 0
+	now := time.Now().UTC()
+	for _, job := range jobs {
+		if now.Sub(job.SubmittedAt) > timeout {
+			d.activeMu.Lock()
+			if cancel, exists := d.activeCancels[job.ID]; exists {
+				cancel()
+				delete(d.activeCancels, job.ID)
+			}
+			d.activeMu.Unlock()
+
+			_ = d.store.FailJob(ctx, job.ID, "job execution timed out")
+			d.logger.WarnContext(ctx, "reaped stale job", slog.String("job_id", string(job.ID)), slog.Duration("age", now.Sub(job.SubmittedAt)))
+			reaped++
+		}
+	}
+	return reaped, nil
 }
 
 func (d *Dispatcher) RecoverPendingJobs(ctx context.Context) error {

@@ -618,6 +618,290 @@ func (x *ArtifactChunk) GetData() []byte {
 	return nil
 }
 
+type CancelJobRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelJobRequest) Reset() {
+	*x = CancelJobRequest{}
+	mi := &file_proto_v1_scheduler_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelJobRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelJobRequest) ProtoMessage() {}
+
+func (x *CancelJobRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_scheduler_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelJobRequest.ProtoReflect.Descriptor instead.
+func (*CancelJobRequest) Descriptor() ([]byte, []int) {
+	return file_proto_v1_scheduler_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CancelJobRequest) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+type CancelJobResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cancelled     bool                   `protobuf:"varint,1,opt,name=cancelled,proto3" json:"cancelled,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelJobResponse) Reset() {
+	*x = CancelJobResponse{}
+	mi := &file_proto_v1_scheduler_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelJobResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelJobResponse) ProtoMessage() {}
+
+func (x *CancelJobResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_scheduler_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelJobResponse.ProtoReflect.Descriptor instead.
+func (*CancelJobResponse) Descriptor() ([]byte, []int) {
+	return file_proto_v1_scheduler_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *CancelJobResponse) GetCancelled() bool {
+	if x != nil {
+		return x.Cancelled
+	}
+	return false
+}
+
+func (x *CancelJobResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type ListJobsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobsRequest) Reset() {
+	*x = ListJobsRequest{}
+	mi := &file_proto_v1_scheduler_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobsRequest) ProtoMessage() {}
+
+func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_scheduler_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
+func (*ListJobsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_v1_scheduler_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListJobsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListJobsRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type JobSummary struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	JobId           string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	Toolchain       string                 `protobuf:"bytes,2,opt,name=toolchain,proto3" json:"toolchain,omitempty"`
+	Runner          string                 `protobuf:"bytes,3,opt,name=runner,proto3" json:"runner,omitempty"`
+	State           JobState               `protobuf:"varint,4,opt,name=state,proto3,enum=packets.v1.JobState" json:"state,omitempty"`
+	SubmittedAtUnix int64                  `protobuf:"varint,5,opt,name=submitted_at_unix,json=submittedAtUnix,proto3" json:"submitted_at_unix,omitempty"`
+	Owner           string                 `protobuf:"bytes,6,opt,name=owner,proto3" json:"owner,omitempty"`
+	ErrorMessage    string                 `protobuf:"bytes,7,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *JobSummary) Reset() {
+	*x = JobSummary{}
+	mi := &file_proto_v1_scheduler_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobSummary) ProtoMessage() {}
+
+func (x *JobSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_scheduler_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobSummary.ProtoReflect.Descriptor instead.
+func (*JobSummary) Descriptor() ([]byte, []int) {
+	return file_proto_v1_scheduler_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *JobSummary) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobSummary) GetToolchain() string {
+	if x != nil {
+		return x.Toolchain
+	}
+	return ""
+}
+
+func (x *JobSummary) GetRunner() string {
+	if x != nil {
+		return x.Runner
+	}
+	return ""
+}
+
+func (x *JobSummary) GetState() JobState {
+	if x != nil {
+		return x.State
+	}
+	return JobState_JOB_STATE_UNSPECIFIED
+}
+
+func (x *JobSummary) GetSubmittedAtUnix() int64 {
+	if x != nil {
+		return x.SubmittedAtUnix
+	}
+	return 0
+}
+
+func (x *JobSummary) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *JobSummary) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+type ListJobsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jobs          []*JobSummary          `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobsResponse) Reset() {
+	*x = ListJobsResponse{}
+	mi := &file_proto_v1_scheduler_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobsResponse) ProtoMessage() {}
+
+func (x *ListJobsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_scheduler_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobsResponse.ProtoReflect.Descriptor instead.
+func (*ListJobsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_v1_scheduler_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListJobsResponse) GetJobs() []*JobSummary {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
 var File_proto_v1_scheduler_proto protoreflect.FileDescriptor
 
 const file_proto_v1_scheduler_proto_rawDesc = "" +
@@ -627,7 +911,7 @@ const file_proto_v1_scheduler_proto_rawDesc = "" +
 	"\x11ClearCacheRequest\x12\x1c\n" +
 	"\ttoolchain\x18\x01 \x01(\tR\ttoolchain\"9\n" +
 	"\x12ClearCacheResponse\x12#\n" +
-	"\rcleared_count\x18\x01 \x01(\x05R\fclearedCount\"\x96\x02\n" +
+	"\rcleared_count\x18\x01 \x01(\x05R\fclearedCount\"\xde\x02\n" +
 	"\x10SubmitJobRequest\x12\x1b\n" +
 	"\tcache_key\x18\x01 \x01(\tR\bcacheKey\x12\x1c\n" +
 	"\ttoolchain\x18\x02 \x01(\tR\ttoolchain\x12!\n" +
@@ -637,7 +921,11 @@ const file_proto_v1_scheduler_proto_rawDesc = "" +
 	"\vsource_mode\x18\x06 \x01(\tR\n" +
 	"sourceMode\x12!\n" +
 	"\fcommand_args\x18\a \x03(\tR\vcommandArgs\x12%\n" +
-	"\x0eartifact_paths\x18\b \x03(\tR\rartifactPaths\"G\n" +
+	"\x0eartifact_paths\x18\b \x03(\tR\rartifactPaths\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\t \x01(\tR\tprojectId\x12'\n" +
+	"\x0fapproval_ticket\x18\n" +
+	" \x01(\tR\x0eapprovalTicket\"G\n" +
 	"\x11SubmitJobResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1b\n" +
 	"\tcache_hit\x18\x02 \x01(\bR\bcacheHit\",\n" +
@@ -655,7 +943,26 @@ const file_proto_v1_scheduler_proto_rawDesc = "" +
 	"\x17DownloadArtifactRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"#\n" +
 	"\rArtifactChunk\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data*\xb5\x01\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\")\n" +
+	"\x10CancelJobRequest\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"K\n" +
+	"\x11CancelJobResponse\x12\x1c\n" +
+	"\tcancelled\x18\x01 \x01(\bR\tcancelled\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"=\n" +
+	"\x0fListJobsRequest\x12\x14\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\"\xec\x01\n" +
+	"\n" +
+	"JobSummary\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1c\n" +
+	"\ttoolchain\x18\x02 \x01(\tR\ttoolchain\x12\x16\n" +
+	"\x06runner\x18\x03 \x01(\tR\x06runner\x12*\n" +
+	"\x05state\x18\x04 \x01(\x0e2\x14.packets.v1.JobStateR\x05state\x12*\n" +
+	"\x11submitted_at_unix\x18\x05 \x01(\x03R\x0fsubmittedAtUnix\x12\x14\n" +
+	"\x05owner\x18\x06 \x01(\tR\x05owner\x12#\n" +
+	"\rerror_message\x18\a \x01(\tR\ferrorMessage\">\n" +
+	"\x10ListJobsResponse\x12*\n" +
+	"\x04jobs\x18\x01 \x03(\v2\x16.packets.v1.JobSummaryR\x04jobs*\xb5\x01\n" +
 	"\bJobState\x12\x19\n" +
 	"\x15JOB_STATE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11JOB_STATE_PENDING\x10\x01\x12\x17\n" +
@@ -663,14 +970,16 @@ const file_proto_v1_scheduler_proto_rawDesc = "" +
 	"\x14JOB_STATE_DISPATCHED\x10\x03\x12\x15\n" +
 	"\x11JOB_STATE_RUNNING\x10\x04\x12\x17\n" +
 	"\x13JOB_STATE_SUCCEEDED\x10\x05\x12\x14\n" +
-	"\x10JOB_STATE_FAILED\x10\x062\x98\x03\n" +
+	"\x10JOB_STATE_FAILED\x10\x062\xa9\x04\n" +
 	"\tScheduler\x12H\n" +
 	"\tSubmitJob\x12\x1c.packets.v1.SubmitJobRequest\x1a\x1d.packets.v1.SubmitJobResponse\x12Q\n" +
 	"\fGetJobStatus\x12\x1f.packets.v1.GetJobStatusRequest\x1a .packets.v1.GetJobStatusResponse\x12K\n" +
 	"\rStreamJobLogs\x12 .packets.v1.StreamJobLogsRequest\x1a\x16.packets.v1.JobLogLine0\x01\x12K\n" +
 	"\n" +
 	"ClearCache\x12\x1d.packets.v1.ClearCacheRequest\x1a\x1e.packets.v1.ClearCacheResponse\x12T\n" +
-	"\x10DownloadArtifact\x12#.packets.v1.DownloadArtifactRequest\x1a\x19.packets.v1.ArtifactChunk0\x01B&Z$github.com/waris4ly/packets/proto/v1b\x06proto3"
+	"\x10DownloadArtifact\x12#.packets.v1.DownloadArtifactRequest\x1a\x19.packets.v1.ArtifactChunk0\x01\x12H\n" +
+	"\tCancelJob\x12\x1c.packets.v1.CancelJobRequest\x1a\x1d.packets.v1.CancelJobResponse\x12E\n" +
+	"\bListJobs\x12\x1b.packets.v1.ListJobsRequest\x1a\x1c.packets.v1.ListJobsResponseB-Z+github.com/debaucheryparty/packets/proto/v1b\x06proto3"
 
 var (
 	file_proto_v1_scheduler_proto_rawDescOnce sync.Once
@@ -685,7 +994,7 @@ func file_proto_v1_scheduler_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_v1_scheduler_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_v1_scheduler_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_proto_v1_scheduler_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_proto_v1_scheduler_proto_goTypes = []any{
 	(JobState)(0),                   // 0: packets.v1.JobState
 	(*ClearCacheRequest)(nil),       // 1: packets.v1.ClearCacheRequest
@@ -698,24 +1007,35 @@ var file_proto_v1_scheduler_proto_goTypes = []any{
 	(*JobLogLine)(nil),              // 8: packets.v1.JobLogLine
 	(*DownloadArtifactRequest)(nil), // 9: packets.v1.DownloadArtifactRequest
 	(*ArtifactChunk)(nil),           // 10: packets.v1.ArtifactChunk
+	(*CancelJobRequest)(nil),        // 11: packets.v1.CancelJobRequest
+	(*CancelJobResponse)(nil),       // 12: packets.v1.CancelJobResponse
+	(*ListJobsRequest)(nil),         // 13: packets.v1.ListJobsRequest
+	(*JobSummary)(nil),              // 14: packets.v1.JobSummary
+	(*ListJobsResponse)(nil),        // 15: packets.v1.ListJobsResponse
 }
 var file_proto_v1_scheduler_proto_depIdxs = []int32{
 	0,  // 0: packets.v1.GetJobStatusResponse.state:type_name -> packets.v1.JobState
-	3,  // 1: packets.v1.Scheduler.SubmitJob:input_type -> packets.v1.SubmitJobRequest
-	5,  // 2: packets.v1.Scheduler.GetJobStatus:input_type -> packets.v1.GetJobStatusRequest
-	7,  // 3: packets.v1.Scheduler.StreamJobLogs:input_type -> packets.v1.StreamJobLogsRequest
-	1,  // 4: packets.v1.Scheduler.ClearCache:input_type -> packets.v1.ClearCacheRequest
-	9,  // 5: packets.v1.Scheduler.DownloadArtifact:input_type -> packets.v1.DownloadArtifactRequest
-	4,  // 6: packets.v1.Scheduler.SubmitJob:output_type -> packets.v1.SubmitJobResponse
-	6,  // 7: packets.v1.Scheduler.GetJobStatus:output_type -> packets.v1.GetJobStatusResponse
-	8,  // 8: packets.v1.Scheduler.StreamJobLogs:output_type -> packets.v1.JobLogLine
-	2,  // 9: packets.v1.Scheduler.ClearCache:output_type -> packets.v1.ClearCacheResponse
-	10, // 10: packets.v1.Scheduler.DownloadArtifact:output_type -> packets.v1.ArtifactChunk
-	6,  // [6:11] is the sub-list for method output_type
-	1,  // [1:6] is the sub-list for method input_type
-	1,  // [1:1] is the sub-list for extension type_name
-	1,  // [1:1] is the sub-list for extension extendee
-	0,  // [0:1] is the sub-list for field type_name
+	0,  // 1: packets.v1.JobSummary.state:type_name -> packets.v1.JobState
+	14, // 2: packets.v1.ListJobsResponse.jobs:type_name -> packets.v1.JobSummary
+	3,  // 3: packets.v1.Scheduler.SubmitJob:input_type -> packets.v1.SubmitJobRequest
+	5,  // 4: packets.v1.Scheduler.GetJobStatus:input_type -> packets.v1.GetJobStatusRequest
+	7,  // 5: packets.v1.Scheduler.StreamJobLogs:input_type -> packets.v1.StreamJobLogsRequest
+	1,  // 6: packets.v1.Scheduler.ClearCache:input_type -> packets.v1.ClearCacheRequest
+	9,  // 7: packets.v1.Scheduler.DownloadArtifact:input_type -> packets.v1.DownloadArtifactRequest
+	11, // 8: packets.v1.Scheduler.CancelJob:input_type -> packets.v1.CancelJobRequest
+	13, // 9: packets.v1.Scheduler.ListJobs:input_type -> packets.v1.ListJobsRequest
+	4,  // 10: packets.v1.Scheduler.SubmitJob:output_type -> packets.v1.SubmitJobResponse
+	6,  // 11: packets.v1.Scheduler.GetJobStatus:output_type -> packets.v1.GetJobStatusResponse
+	8,  // 12: packets.v1.Scheduler.StreamJobLogs:output_type -> packets.v1.JobLogLine
+	2,  // 13: packets.v1.Scheduler.ClearCache:output_type -> packets.v1.ClearCacheResponse
+	10, // 14: packets.v1.Scheduler.DownloadArtifact:output_type -> packets.v1.ArtifactChunk
+	12, // 15: packets.v1.Scheduler.CancelJob:output_type -> packets.v1.CancelJobResponse
+	15, // 16: packets.v1.Scheduler.ListJobs:output_type -> packets.v1.ListJobsResponse
+	10, // [10:17] is the sub-list for method output_type
+	3,  // [3:10] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_proto_v1_scheduler_proto_init() }
@@ -729,7 +1049,7 @@ func file_proto_v1_scheduler_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_v1_scheduler_proto_rawDesc), len(file_proto_v1_scheduler_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

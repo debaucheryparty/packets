@@ -24,6 +24,8 @@ const (
 	Scheduler_StreamJobLogs_FullMethodName    = "/packets.v1.Scheduler/StreamJobLogs"
 	Scheduler_ClearCache_FullMethodName       = "/packets.v1.Scheduler/ClearCache"
 	Scheduler_DownloadArtifact_FullMethodName = "/packets.v1.Scheduler/DownloadArtifact"
+	Scheduler_CancelJob_FullMethodName        = "/packets.v1.Scheduler/CancelJob"
+	Scheduler_ListJobs_FullMethodName         = "/packets.v1.Scheduler/ListJobs"
 )
 
 // SchedulerClient is the client API for Scheduler service.
@@ -35,6 +37,8 @@ type SchedulerClient interface {
 	StreamJobLogs(ctx context.Context, in *StreamJobLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[JobLogLine], error)
 	ClearCache(ctx context.Context, in *ClearCacheRequest, opts ...grpc.CallOption) (*ClearCacheResponse, error)
 	DownloadArtifact(ctx context.Context, in *DownloadArtifactRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArtifactChunk], error)
+	CancelJob(ctx context.Context, in *CancelJobRequest, opts ...grpc.CallOption) (*CancelJobResponse, error)
+	ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error)
 }
 
 type schedulerClient struct {
@@ -113,6 +117,26 @@ func (c *schedulerClient) DownloadArtifact(ctx context.Context, in *DownloadArti
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Scheduler_DownloadArtifactClient = grpc.ServerStreamingClient[ArtifactChunk]
 
+func (c *schedulerClient) CancelJob(ctx context.Context, in *CancelJobRequest, opts ...grpc.CallOption) (*CancelJobResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelJobResponse)
+	err := c.cc.Invoke(ctx, Scheduler_CancelJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *schedulerClient) ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListJobsResponse)
+	err := c.cc.Invoke(ctx, Scheduler_ListJobs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SchedulerServer is the server API for Scheduler service.
 // All implementations must embed UnimplementedSchedulerServer
 // for forward compatibility.
@@ -122,6 +146,8 @@ type SchedulerServer interface {
 	StreamJobLogs(*StreamJobLogsRequest, grpc.ServerStreamingServer[JobLogLine]) error
 	ClearCache(context.Context, *ClearCacheRequest) (*ClearCacheResponse, error)
 	DownloadArtifact(*DownloadArtifactRequest, grpc.ServerStreamingServer[ArtifactChunk]) error
+	CancelJob(context.Context, *CancelJobRequest) (*CancelJobResponse, error)
+	ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error)
 	mustEmbedUnimplementedSchedulerServer()
 }
 
@@ -146,6 +172,12 @@ func (UnimplementedSchedulerServer) ClearCache(context.Context, *ClearCacheReque
 }
 func (UnimplementedSchedulerServer) DownloadArtifact(*DownloadArtifactRequest, grpc.ServerStreamingServer[ArtifactChunk]) error {
 	return status.Error(codes.Unimplemented, "method DownloadArtifact not implemented")
+}
+func (UnimplementedSchedulerServer) CancelJob(context.Context, *CancelJobRequest) (*CancelJobResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelJob not implemented")
+}
+func (UnimplementedSchedulerServer) ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListJobs not implemented")
 }
 func (UnimplementedSchedulerServer) mustEmbedUnimplementedSchedulerServer() {}
 func (UnimplementedSchedulerServer) testEmbeddedByValue()                   {}
@@ -244,6 +276,42 @@ func _Scheduler_DownloadArtifact_Handler(srv interface{}, stream grpc.ServerStre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Scheduler_DownloadArtifactServer = grpc.ServerStreamingServer[ArtifactChunk]
 
+func _Scheduler_CancelJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchedulerServer).CancelJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Scheduler_CancelJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchedulerServer).CancelJob(ctx, req.(*CancelJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Scheduler_ListJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListJobsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchedulerServer).ListJobs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Scheduler_ListJobs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchedulerServer).ListJobs(ctx, req.(*ListJobsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Scheduler_ServiceDesc is the grpc.ServiceDesc for Scheduler service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -262,6 +330,14 @@ var Scheduler_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ClearCache",
 			Handler:    _Scheduler_ClearCache_Handler,
+		},
+		{
+			MethodName: "CancelJob",
+			Handler:    _Scheduler_CancelJob_Handler,
+		},
+		{
+			MethodName: "ListJobs",
+			Handler:    _Scheduler_ListJobs_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

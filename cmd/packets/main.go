@@ -54,6 +54,8 @@ func main() {
 		cli.NewPullCommand(cfg, logger),
 		cli.NewTUICommand(cfg, logger),
 		cli.NewWorkerCommand(cfg, logger),
+		cli.NewJobsCommand(cfg, logger),
+		cli.NewCancelCommand(cfg, logger),
 	)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {

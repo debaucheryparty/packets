@@ -103,7 +103,9 @@ func main() {
 
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
+		reapTicker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
+		defer reapTicker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
@@ -112,6 +114,10 @@ func main() {
 				stale := workerPool.CleanupStaleWorkers(45 * time.Second)
 				if len(stale) > 0 {
 					logger.Info("cleaned up stale peer workers", slog.Int("count", len(stale)))
+				}
+			case <-reapTicker.C:
+				if reaped, err := dispatcher.ReapStaleJobs(ctx, 1*time.Hour); err == nil && reaped > 0 {
+					logger.Info("reaped timed out jobs", slog.Int("count", reaped))
 				}
 			}
 		}

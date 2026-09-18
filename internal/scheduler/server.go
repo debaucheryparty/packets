@@ -279,6 +279,77 @@ func (s *Server) ClearCache(ctx context.Context, req *pb.ClearCacheRequest) (*pb
 	return &pb.ClearCacheResponse{ClearedCount: int32(count)}, nil
 }
 
+func (s *Server) CancelJob(ctx context.Context, req *pb.CancelJobRequest) (*pb.CancelJobResponse, error) {
+	if req.JobId == "" {
+		return nil, status.Error(codes.InvalidArgument, "job_id is required")
+	}
+	cancelled, err := s.dispatcher.Cancel(ctx, apitypes.JobID(req.JobId))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "cancel failed: %v", err)
+	}
+	if !cancelled {
+		return &pb.CancelJobResponse{
+			Cancelled: false,
+			Message:   "job is already finished or cannot be cancelled",
+		}, nil
+	}
+	return &pb.CancelJobResponse{
+		Cancelled: true,
+		Message:   "job cancelled successfully",
+	}, nil
+}
+
+func (s *Server) ListJobs(ctx context.Context, req *pb.ListJobsRequest) (*pb.ListJobsResponse, error) {
+	limit := int(req.Limit)
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+
+	var jobs []apitypes.Job
+	var err error
+	if st, ok := parseState(req.State); ok {
+		jobs, err = s.store.ListJobsByState(ctx, st)
+	} else {
+		jobs, err = s.store.ListRecentJobs(ctx, limit)
+	}
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list jobs: %v", err)
+	}
+
+	summaries := make([]*pb.JobSummary, 0, len(jobs))
+	for _, j := range jobs {
+		summaries = append(summaries, &pb.JobSummary{
+			JobId:           string(j.ID),
+			Toolchain:       string(j.Toolchain),
+			Runner:          string(j.Runner),
+			State:           mapState(j.State),
+			SubmittedAtUnix: j.SubmittedAt.Unix(),
+			Owner:           j.Owner,
+			ErrorMessage:    j.Error,
+		})
+	}
+	return &pb.ListJobsResponse{Jobs: summaries}, nil
+}
+
+func parseState(s string) (apitypes.JobState, bool) {
+	switch strings.ToLower(s) {
+	case "pending":
+		return apitypes.JobStatePending, true
+	case "uploading":
+		return apitypes.JobStateUploading, true
+	case "dispatched":
+		return apitypes.JobStateDispatched, true
+	case "running":
+		return apitypes.JobStateRunning, true
+	case "succeeded":
+		return apitypes.JobStateSucceeded, true
+	case "failed":
+		return apitypes.JobStateFailed, true
+	default:
+		return 0, false
+	}
+}
+
 func mapState(state apitypes.JobState) pb.JobState {
 	switch state {
 	case apitypes.JobStatePending:

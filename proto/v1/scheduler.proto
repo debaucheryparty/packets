@@ -9,6 +9,8 @@ service Scheduler {
   rpc StreamJobLogs(StreamJobLogsRequest) returns (stream JobLogLine);
   rpc ClearCache(ClearCacheRequest) returns (ClearCacheResponse);
   rpc DownloadArtifact(DownloadArtifactRequest) returns (stream ArtifactChunk);
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
 }
 
 message ClearCacheRequest {
@@ -61,6 +63,34 @@ message DownloadArtifactRequest {
 
 message ArtifactChunk {
   bytes data = 1;
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {
+  bool cancelled = 1;
+  string message = 2;
+}
+
+message ListJobsRequest {
+  int32 limit = 1;
+  string state = 2;
+}
+
+message JobSummary {
+  string job_id = 1;
+  string toolchain = 2;
+  string runner = 3;
+  JobState state = 4;
+  int64 submitted_at_unix = 5;
+  string owner = 6;
+  string error_message = 7;
+}
+
+message ListJobsResponse {
+  repeated JobSummary jobs = 1;
 }
 
 enum JobState {
