@@ -1,0 +1,63 @@
+syntax = "proto3";
+package packets.v1;
+
+option go_package = "github.com/debaucheryparty/packets/proto/v1";
+
+service SubspaceService {
+  rpc CreateSubspace(CreateSubspaceRequest) returns (SubspaceResponse);
+  rpc GetSubspace(GetSubspaceRequest) returns (SubspaceResponse);
+  rpc ListSubspaces(ListSubspacesRequest) returns (ListSubspacesResponse);
+  rpc DestroySubspace(DestroySubspaceRequest) returns (DestroySubspaceResponse);
+  rpc TouchSubspace(TouchSubspaceRequest) returns (SubspaceResponse);
+}
+
+message SubspaceRecord {
+  string id = 1;
+  string project_id = 2;
+  string owner_id = 3;
+  string worker_id = 4;
+  string workspace_id = 5;
+  string environment_id = 6;
+  string state = 7;
+  string created_at = 8;
+  string last_used_at = 9;
+  map<string, string> metadata = 10;
+}
+
+message CreateSubspaceRequest {
+  string project_id = 1;
+  string owner_id = 2;
+  string worker_id = 3;
+  string environment_id = 4;
+  string workspace_id = 5;
+  map<string, string> metadata = 6;
+}
+
+message GetSubspaceRequest {
+  string id = 1;
+}
+
+message ListSubspacesRequest {
+  string owner_id = 1;
+  string project_id = 2;
+}
+
+message ListSubspacesResponse {
+  repeated SubspaceRecord subspaces = 1;
+}
+
+message DestroySubspaceRequest {
+  string id = 1;
+}
+
+message DestroySubspaceResponse {
+  bool success = 1;
+}
+
+message TouchSubspaceRequest {
+  string id = 1;
+}
+
+message SubspaceResponse {
+  SubspaceRecord subspace = 1;
+}
