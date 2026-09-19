@@ -25,6 +25,8 @@ func NewSubspaceCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command 
 		newSubspaceCreateCommand(cfg, logger),
 		newSubspaceListCommand(cfg, logger),
 		newSubspaceStatusCommand(cfg, logger),
+		newSubspaceSleepCommand(cfg, logger),
+		newSubspaceWakeCommand(cfg, logger),
 		newSubspaceDestroyCommand(cfg, logger),
 		newSubspaceShellCommand(cfg, logger),
 	)
@@ -174,6 +176,56 @@ func newSubspaceStatusCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command
 					fmt.Printf("  %s: %s\n", k, v)
 				}
 			}
+			return nil
+		},
+	}
+}
+
+func newSubspaceSleepCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "sleep <subspace-id>",
+		Short: "Put a remote Subspace to sleep to reclaim resources",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			conn, err := DialScheduler(ctx, cfg)
+			if err != nil {
+				return fmt.Errorf("connect to packetsd: %w", err)
+			}
+			defer func() { _ = conn.Close() }()
+
+			client := pb.NewSubspaceServiceClient(conn)
+			resp, err := client.SleepSubspace(ctx, &pb.SleepSubspaceRequest{Id: args[0]})
+			if err != nil {
+				return fmt.Errorf("sleep subspace %s: %w", args[0], err)
+			}
+
+			fmt.Printf("✓ Subspace %s is now sleeping\n", resp.Subspace.Id)
+			return nil
+		},
+	}
+}
+
+func newSubspaceWakeCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:   "wake <subspace-id>",
+		Short: "Wake a sleeping remote Subspace back to ready state",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			conn, err := DialScheduler(ctx, cfg)
+			if err != nil {
+				return fmt.Errorf("connect to packetsd: %w", err)
+			}
+			defer func() { _ = conn.Close() }()
+
+			client := pb.NewSubspaceServiceClient(conn)
+			resp, err := client.WakeSubspace(ctx, &pb.WakeSubspaceRequest{Id: args[0]})
+			if err != nil {
+				return fmt.Errorf("wake subspace %s: %w", args[0], err)
+			}
+
+			fmt.Printf("✓ Subspace %s is now ready\n", resp.Subspace.Id)
 			return nil
 		},
 	}

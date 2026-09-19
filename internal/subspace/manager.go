@@ -16,10 +16,12 @@ import (
 )
 
 var (
-	ErrInvalidSubspaceID  = errors.New("invalid subspace ID")
-	ErrPathTraversal      = errors.New("path traversal detected in subspace workspace")
-	ErrSubspaceNotReady   = errors.New("subspace is not ready for execution")
-	ErrUnauthorizedAccess = errors.New("unauthorized access to subspace")
+	ErrInvalidSubspaceID    = errors.New("invalid subspace ID")
+	ErrPathTraversal        = errors.New("path traversal detected in subspace workspace")
+	ErrSubspaceNotReady     = errors.New("subspace is not ready for execution")
+	ErrSubspaceNotSleeping  = errors.New("subspace is not sleeping")
+	ErrSubspaceInvalidState = errors.New("invalid subspace state transition")
+	ErrUnauthorizedAccess   = errors.New("unauthorized access to subspace")
 )
 
 type Store interface {
@@ -149,6 +151,41 @@ func (m *Manager) UpdateState(ctx context.Context, id string, state apitypes.Sub
 
 func (m *Manager) Touch(ctx context.Context, id string) error {
 	return m.store.TouchSubspace(ctx, id)
+}
+
+func (m *Manager) Sleep(ctx context.Context, id string) (apitypes.Subspace, error) {
+	sub, err := m.store.GetSubspace(ctx, id)
+	if err != nil {
+		return apitypes.Subspace{}, err
+	}
+	if !apitypes.CanTransitionSubspaceState(sub.State, apitypes.SubspaceSleeping) {
+		return apitypes.Subspace{}, fmt.Errorf("cannot sleep subspace from state %q: %w", sub.State, ErrSubspaceInvalidState)
+	}
+
+	if err := m.store.UpdateSubspaceState(ctx, id, apitypes.SubspaceSleeping); err != nil {
+		return apitypes.Subspace{}, fmt.Errorf("update subspace state to sleeping: %w", err)
+	}
+	sub.State = apitypes.SubspaceSleeping
+	m.logger.InfoContext(ctx, "subspace entered sleeping state", slog.String("id", id))
+	return sub, nil
+}
+
+func (m *Manager) Wake(ctx context.Context, id string) (apitypes.Subspace, error) {
+	sub, err := m.store.GetSubspace(ctx, id)
+	if err != nil {
+		return apitypes.Subspace{}, err
+	}
+	if !apitypes.CanTransitionSubspaceState(sub.State, apitypes.SubspaceReady) {
+		return apitypes.Subspace{}, fmt.Errorf("cannot wake subspace from state %q: %w", sub.State, ErrSubspaceInvalidState)
+	}
+
+	if err := m.store.UpdateSubspaceState(ctx, id, apitypes.SubspaceReady); err != nil {
+		return apitypes.Subspace{}, fmt.Errorf("update subspace state to ready: %w", err)
+	}
+	_ = m.store.TouchSubspace(ctx, id)
+	sub.State = apitypes.SubspaceReady
+	m.logger.InfoContext(ctx, "subspace woke up and returned to ready", slog.String("id", id))
+	return sub, nil
 }
 
 func (m *Manager) Destroy(ctx context.Context, id string) error {

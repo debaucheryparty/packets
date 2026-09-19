@@ -8,7 +8,6 @@ package v1
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -25,6 +24,8 @@ const (
 	SubspaceService_ListSubspaces_FullMethodName   = "/packets.v1.SubspaceService/ListSubspaces"
 	SubspaceService_DestroySubspace_FullMethodName = "/packets.v1.SubspaceService/DestroySubspace"
 	SubspaceService_TouchSubspace_FullMethodName   = "/packets.v1.SubspaceService/TouchSubspace"
+	SubspaceService_SleepSubspace_FullMethodName   = "/packets.v1.SubspaceService/SleepSubspace"
+	SubspaceService_WakeSubspace_FullMethodName    = "/packets.v1.SubspaceService/WakeSubspace"
 )
 
 // SubspaceServiceClient is the client API for SubspaceService service.
@@ -36,6 +37,8 @@ type SubspaceServiceClient interface {
 	ListSubspaces(ctx context.Context, in *ListSubspacesRequest, opts ...grpc.CallOption) (*ListSubspacesResponse, error)
 	DestroySubspace(ctx context.Context, in *DestroySubspaceRequest, opts ...grpc.CallOption) (*DestroySubspaceResponse, error)
 	TouchSubspace(ctx context.Context, in *TouchSubspaceRequest, opts ...grpc.CallOption) (*SubspaceResponse, error)
+	SleepSubspace(ctx context.Context, in *SleepSubspaceRequest, opts ...grpc.CallOption) (*SubspaceResponse, error)
+	WakeSubspace(ctx context.Context, in *WakeSubspaceRequest, opts ...grpc.CallOption) (*SubspaceResponse, error)
 }
 
 type subspaceServiceClient struct {
@@ -96,6 +99,26 @@ func (c *subspaceServiceClient) TouchSubspace(ctx context.Context, in *TouchSubs
 	return out, nil
 }
 
+func (c *subspaceServiceClient) SleepSubspace(ctx context.Context, in *SleepSubspaceRequest, opts ...grpc.CallOption) (*SubspaceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubspaceResponse)
+	err := c.cc.Invoke(ctx, SubspaceService_SleepSubspace_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *subspaceServiceClient) WakeSubspace(ctx context.Context, in *WakeSubspaceRequest, opts ...grpc.CallOption) (*SubspaceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubspaceResponse)
+	err := c.cc.Invoke(ctx, SubspaceService_WakeSubspace_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SubspaceServiceServer is the server API for SubspaceService service.
 // All implementations must embed UnimplementedSubspaceServiceServer
 // for forward compatibility.
@@ -105,6 +128,8 @@ type SubspaceServiceServer interface {
 	ListSubspaces(context.Context, *ListSubspacesRequest) (*ListSubspacesResponse, error)
 	DestroySubspace(context.Context, *DestroySubspaceRequest) (*DestroySubspaceResponse, error)
 	TouchSubspace(context.Context, *TouchSubspaceRequest) (*SubspaceResponse, error)
+	SleepSubspace(context.Context, *SleepSubspaceRequest) (*SubspaceResponse, error)
+	WakeSubspace(context.Context, *WakeSubspaceRequest) (*SubspaceResponse, error)
 	mustEmbedUnimplementedSubspaceServiceServer()
 }
 
@@ -118,21 +143,23 @@ type UnimplementedSubspaceServiceServer struct{}
 func (UnimplementedSubspaceServiceServer) CreateSubspace(context.Context, *CreateSubspaceRequest) (*SubspaceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateSubspace not implemented")
 }
-
 func (UnimplementedSubspaceServiceServer) GetSubspace(context.Context, *GetSubspaceRequest) (*SubspaceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSubspace not implemented")
 }
-
 func (UnimplementedSubspaceServiceServer) ListSubspaces(context.Context, *ListSubspacesRequest) (*ListSubspacesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSubspaces not implemented")
 }
-
 func (UnimplementedSubspaceServiceServer) DestroySubspace(context.Context, *DestroySubspaceRequest) (*DestroySubspaceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DestroySubspace not implemented")
 }
-
 func (UnimplementedSubspaceServiceServer) TouchSubspace(context.Context, *TouchSubspaceRequest) (*SubspaceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TouchSubspace not implemented")
+}
+func (UnimplementedSubspaceServiceServer) SleepSubspace(context.Context, *SleepSubspaceRequest) (*SubspaceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SleepSubspace not implemented")
+}
+func (UnimplementedSubspaceServiceServer) WakeSubspace(context.Context, *WakeSubspaceRequest) (*SubspaceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WakeSubspace not implemented")
 }
 func (UnimplementedSubspaceServiceServer) mustEmbedUnimplementedSubspaceServiceServer() {}
 func (UnimplementedSubspaceServiceServer) testEmbeddedByValue()                         {}
@@ -245,6 +272,42 @@ func _SubspaceService_TouchSubspace_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SubspaceService_SleepSubspace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SleepSubspaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SubspaceServiceServer).SleepSubspace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SubspaceService_SleepSubspace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SubspaceServiceServer).SleepSubspace(ctx, req.(*SleepSubspaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SubspaceService_WakeSubspace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WakeSubspaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SubspaceServiceServer).WakeSubspace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SubspaceService_WakeSubspace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SubspaceServiceServer).WakeSubspace(ctx, req.(*WakeSubspaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SubspaceService_ServiceDesc is the grpc.ServiceDesc for SubspaceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -271,6 +334,14 @@ var SubspaceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TouchSubspace",
 			Handler:    _SubspaceService_TouchSubspace_Handler,
+		},
+		{
+			MethodName: "SleepSubspace",
+			Handler:    _SubspaceService_SleepSubspace_Handler,
+		},
+		{
+			MethodName: "WakeSubspace",
+			Handler:    _SubspaceService_WakeSubspace_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

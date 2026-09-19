@@ -165,6 +165,9 @@ func executeViaScheduler(
 		if err != nil {
 			return fmt.Errorf("resolve subspace %s: %w", subspaceID, err)
 		}
+		if subResp.Subspace.State == "sleeping" {
+			return fmt.Errorf("subspace %s is sleeping, run 'packets subspace wake %s' first", subspaceID, subspaceID)
+		}
 		if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
 			return fmt.Errorf("subspace %s is not ready (state: %s)", subspaceID, subResp.Subspace.State)
 		}

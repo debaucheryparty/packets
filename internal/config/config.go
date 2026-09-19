@@ -75,13 +75,8 @@ func LoadConfig(ctx context.Context) (*Config, error) {
 		maxRate = 60
 	}
 
-	serverHost := os.Getenv("PACKETS_SERVER_ADDR")
-	if serverHost == "" {
-		serverHost = os.Getenv("ORACLE_VM_TAILSCALE_HOSTNAME")
-	}
-
 	cfg := &Config{
-		OracleVMTailscaleHost: serverHost,
+		OracleVMTailscaleHost: os.Getenv("ORACLE_VM_TAILSCALE_HOSTNAME"),
 		SchedulerGRPCPort:     os.Getenv("SCHEDULER_GRPC_PORT"),
 		SQLiteDBPath:          os.Getenv("SQLITE_DB_PATH"),
 		GitHubActionsToken:    os.Getenv("GITHUB_ACTIONS_TOKEN"),

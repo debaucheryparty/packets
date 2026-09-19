@@ -26,7 +26,7 @@ packets version
 Packets resolves configuration through a precedence hierarchy (highest to lowest):
 
 1. **CLI Flags**: Explicit command-line arguments (e.g. `--server`, `--runner`).
-2. **Environment Variables & Dotenv**: Environment variables or local `.env.local` / `.env` files (e.g. `PACKETS_SERVER_ADDR`).
+2. **Environment Variables**: Prefixed environment parameters (e.g. `PACKETS_SERVER_ADDR`).
 3. **Local Project Config**: `.packets.json` located in the current project directory.
 4. **Global User Config**: `~/.packets/config.json` in the user's home directory.
 
@@ -34,7 +34,7 @@ Packets resolves configuration through a precedence hierarchy (highest to lowest
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `PACKETS_SERVER_ADDR` | `127.0.0.1:50051` | Address and port of the `packetsd` gRPC server (also accepts legacy `ORACLE_VM_TAILSCALE_HOSTNAME`). |
+| `PACKETS_SERVER_ADDR` | `127.0.0.1:50051` | Address and port of the `packetsd` gRPC server. |
 | `PACKETS_HTTP_ADDR` | `127.0.0.1:9090` | Address and port of the `packetsd` HTTP / metrics server. |
 | `PACKETS_AUTH_TOKEN` | *empty* | Shared bearer authentication token for secure clusters. |
 | `PACKETS_DEFAULT_RUNNER`| `docker` | Default execution runner mode: `host`, `docker`, or `github`. |

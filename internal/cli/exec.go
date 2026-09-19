@@ -58,6 +58,9 @@ func NewExecCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("resolve subspace %s: %w", subspaceFlag, err)
 				}
+				if subResp.Subspace.State == "sleeping" {
+					return fmt.Errorf("subspace %s is sleeping, run 'packets subspace wake %s' first", subspaceFlag, subspaceFlag)
+				}
 				if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
 					return fmt.Errorf("subspace %s is not ready (state: %s)", subspaceFlag, subResp.Subspace.State)
 				}

@@ -75,6 +75,22 @@ func (s *Server) TouchSubspace(ctx context.Context, req *pb.TouchSubspaceRequest
 	return &pb.SubspaceResponse{Subspace: toProto(sub)}, nil
 }
 
+func (s *Server) SleepSubspace(ctx context.Context, req *pb.SleepSubspaceRequest) (*pb.SubspaceResponse, error) {
+	sub, err := s.manager.Sleep(ctx, req.Id)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "sleep subspace %s: %v", req.Id, err)
+	}
+	return &pb.SubspaceResponse{Subspace: toProto(sub)}, nil
+}
+
+func (s *Server) WakeSubspace(ctx context.Context, req *pb.WakeSubspaceRequest) (*pb.SubspaceResponse, error) {
+	sub, err := s.manager.Wake(ctx, req.Id)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "wake subspace %s: %v", req.Id, err)
+	}
+	return &pb.SubspaceResponse{Subspace: toProto(sub)}, nil
+}
+
 func toProto(sub apitypes.Subspace) *pb.SubspaceRecord {
 	return &pb.SubspaceRecord{
 		Id:            sub.ID,

@@ -141,3 +141,51 @@ func TestManager_StateTransitionsAndDestroy(t *testing.T) {
 		t.Errorf("expected workspace directory to be cleaned up after destroy")
 	}
 }
+
+func TestManager_SleepAndWake(t *testing.T) {
+	mgr := setupTestManager(t)
+	ctx := context.Background()
+
+	sub, err := mgr.Create(ctx, CreateOptions{ProjectID: "p-sleep", OwnerID: "eva"})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	wsPath, err := mgr.WorkspacePath(sub)
+	if err != nil {
+		t.Fatalf("WorkspacePath failed: %v", err)
+	}
+	sampleFile := filepath.Join(wsPath, "keep_warm.txt")
+	if err := os.WriteFile(sampleFile, []byte("warm-cache-data"), 0o644); err != nil {
+		t.Fatalf("failed to write sample file: %v", err)
+	}
+
+	sleepingSub, err := mgr.Sleep(ctx, sub.ID)
+	if err != nil {
+		t.Fatalf("Sleep failed: %v", err)
+	}
+	if sleepingSub.State != apitypes.SubspaceSleeping {
+		t.Errorf("expected state sleeping, got %s", sleepingSub.State)
+	}
+
+	if _, err := mgr.Sleep(ctx, sub.ID); err == nil {
+		t.Errorf("expected error sleeping already sleeping subspace, got nil")
+	}
+
+	wokenSub, err := mgr.Wake(ctx, sub.ID)
+	if err != nil {
+		t.Fatalf("Wake failed: %v", err)
+	}
+	if wokenSub.State != apitypes.SubspaceReady {
+		t.Errorf("expected state ready after wake, got %s", wokenSub.State)
+	}
+
+	content, err := os.ReadFile(sampleFile)
+	if err != nil || string(content) != "warm-cache-data" {
+		t.Errorf("workspace file lost or corrupted across sleep/wake: %v, content=%q", err, string(content))
+	}
+
+	if _, err := mgr.Wake(ctx, sub.ID); err == nil {
+		t.Errorf("expected error waking ready subspace, got nil")
+	}
+}

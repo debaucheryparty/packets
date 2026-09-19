@@ -226,6 +226,7 @@ const (
 	SubspaceBusy       SubspaceState = "busy"
 	SubspaceStopping   SubspaceState = "stopping"
 	SubspaceStopped    SubspaceState = "stopped"
+	SubspaceSleeping   SubspaceState = "sleeping"
 	SubspaceError      SubspaceState = "error"
 	SubspaceDestroying SubspaceState = "destroying"
 	SubspaceDestroyed  SubspaceState = "destroyed"
@@ -235,6 +236,32 @@ func (s SubspaceState) String() string { return string(s) }
 
 func (s SubspaceState) IsActive() bool {
 	return s == SubspaceReady || s == SubspaceBusy
+}
+
+func CanTransitionSubspaceState(from, to SubspaceState) bool {
+	if from == to {
+		return false
+	}
+	switch from {
+	case SubspaceCreating:
+		return to == SubspaceReady || to == SubspaceError || to == SubspaceDestroyed
+	case SubspaceReady:
+		return to == SubspaceBusy || to == SubspaceSleeping || to == SubspaceStopping || to == SubspaceDestroying || to == SubspaceDestroyed
+	case SubspaceBusy:
+		return to == SubspaceReady || to == SubspaceError || to == SubspaceDestroying || to == SubspaceDestroyed
+	case SubspaceSleeping:
+		return to == SubspaceReady || to == SubspaceDestroying || to == SubspaceDestroyed
+	case SubspaceStopping:
+		return to == SubspaceStopped || to == SubspaceDestroying || to == SubspaceDestroyed
+	case SubspaceStopped:
+		return to == SubspaceReady || to == SubspaceDestroying || to == SubspaceDestroyed
+	case SubspaceError:
+		return to == SubspaceReady || to == SubspaceDestroying || to == SubspaceDestroyed
+	case SubspaceDestroying:
+		return to == SubspaceDestroyed
+	default:
+		return false
+	}
 }
 
 type Subspace struct {

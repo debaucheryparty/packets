@@ -9,6 +9,8 @@ service SubspaceService {
   rpc ListSubspaces(ListSubspacesRequest) returns (ListSubspacesResponse);
   rpc DestroySubspace(DestroySubspaceRequest) returns (DestroySubspaceResponse);
   rpc TouchSubspace(TouchSubspaceRequest) returns (SubspaceResponse);
+  rpc SleepSubspace(SleepSubspaceRequest) returns (SubspaceResponse);
+  rpc WakeSubspace(WakeSubspaceRequest) returns (SubspaceResponse);
 }
 
 message SubspaceRecord {
@@ -55,6 +57,14 @@ message DestroySubspaceResponse {
 }
 
 message TouchSubspaceRequest {
+  string id = 1;
+}
+
+message SleepSubspaceRequest {
+  string id = 1;
+}
+
+message WakeSubspaceRequest {
   string id = 1;
 }
 

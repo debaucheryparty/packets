@@ -7,12 +7,11 @@
 package v1
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -494,6 +493,94 @@ func (x *TouchSubspaceRequest) GetId() string {
 	return ""
 }
 
+type SleepSubspaceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SleepSubspaceRequest) Reset() {
+	*x = SleepSubspaceRequest{}
+	mi := &file_proto_v1_subspace_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SleepSubspaceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SleepSubspaceRequest) ProtoMessage() {}
+
+func (x *SleepSubspaceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_subspace_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SleepSubspaceRequest.ProtoReflect.Descriptor instead.
+func (*SleepSubspaceRequest) Descriptor() ([]byte, []int) {
+	return file_proto_v1_subspace_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SleepSubspaceRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type WakeSubspaceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WakeSubspaceRequest) Reset() {
+	*x = WakeSubspaceRequest{}
+	mi := &file_proto_v1_subspace_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WakeSubspaceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WakeSubspaceRequest) ProtoMessage() {}
+
+func (x *WakeSubspaceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_subspace_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WakeSubspaceRequest.ProtoReflect.Descriptor instead.
+func (*WakeSubspaceRequest) Descriptor() ([]byte, []int) {
+	return file_proto_v1_subspace_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *WakeSubspaceRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
 type SubspaceResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Subspace      *SubspaceRecord        `protobuf:"bytes,1,opt,name=subspace,proto3" json:"subspace,omitempty"`
@@ -503,7 +590,7 @@ type SubspaceResponse struct {
 
 func (x *SubspaceResponse) Reset() {
 	*x = SubspaceResponse{}
-	mi := &file_proto_v1_subspace_proto_msgTypes[8]
+	mi := &file_proto_v1_subspace_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -515,7 +602,7 @@ func (x *SubspaceResponse) String() string {
 func (*SubspaceResponse) ProtoMessage() {}
 
 func (x *SubspaceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_v1_subspace_proto_msgTypes[8]
+	mi := &file_proto_v1_subspace_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -528,7 +615,7 @@ func (x *SubspaceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubspaceResponse.ProtoReflect.Descriptor instead.
 func (*SubspaceResponse) Descriptor() ([]byte, []int) {
-	return file_proto_v1_subspace_proto_rawDescGZIP(), []int{8}
+	return file_proto_v1_subspace_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SubspaceResponse) GetSubspace() *SubspaceRecord {
@@ -586,15 +673,21 @@ const file_proto_v1_subspace_proto_rawDesc = "" +
 	"\x17DestroySubspaceResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"&\n" +
 	"\x14TouchSubspaceRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"&\n" +
+	"\x14SleepSubspaceRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"%\n" +
+	"\x13WakeSubspaceRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"J\n" +
 	"\x10SubspaceResponse\x126\n" +
-	"\bsubspace\x18\x01 \x01(\v2\x1a.packets.v1.SubspaceRecordR\bsubspace2\xb4\x03\n" +
+	"\bsubspace\x18\x01 \x01(\v2\x1a.packets.v1.SubspaceRecordR\bsubspace2\xd4\x04\n" +
 	"\x0fSubspaceService\x12Q\n" +
 	"\x0eCreateSubspace\x12!.packets.v1.CreateSubspaceRequest\x1a\x1c.packets.v1.SubspaceResponse\x12K\n" +
 	"\vGetSubspace\x12\x1e.packets.v1.GetSubspaceRequest\x1a\x1c.packets.v1.SubspaceResponse\x12T\n" +
 	"\rListSubspaces\x12 .packets.v1.ListSubspacesRequest\x1a!.packets.v1.ListSubspacesResponse\x12Z\n" +
 	"\x0fDestroySubspace\x12\".packets.v1.DestroySubspaceRequest\x1a#.packets.v1.DestroySubspaceResponse\x12O\n" +
-	"\rTouchSubspace\x12 .packets.v1.TouchSubspaceRequest\x1a\x1c.packets.v1.SubspaceResponseB-Z+github.com/debaucheryparty/packets/proto/v1b\x06proto3"
+	"\rTouchSubspace\x12 .packets.v1.TouchSubspaceRequest\x1a\x1c.packets.v1.SubspaceResponse\x12O\n" +
+	"\rSleepSubspace\x12 .packets.v1.SleepSubspaceRequest\x1a\x1c.packets.v1.SubspaceResponse\x12M\n" +
+	"\fWakeSubspace\x12\x1f.packets.v1.WakeSubspaceRequest\x1a\x1c.packets.v1.SubspaceResponseB-Z+github.com/debaucheryparty/packets/proto/v1b\x06proto3"
 
 var (
 	file_proto_v1_subspace_proto_rawDescOnce sync.Once
@@ -608,26 +701,25 @@ func file_proto_v1_subspace_proto_rawDescGZIP() []byte {
 	return file_proto_v1_subspace_proto_rawDescData
 }
 
-var (
-	file_proto_v1_subspace_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
-	file_proto_v1_subspace_proto_goTypes  = []any{
-		(*SubspaceRecord)(nil),          // 0: packets.v1.SubspaceRecord
-		(*CreateSubspaceRequest)(nil),   // 1: packets.v1.CreateSubspaceRequest
-		(*GetSubspaceRequest)(nil),      // 2: packets.v1.GetSubspaceRequest
-		(*ListSubspacesRequest)(nil),    // 3: packets.v1.ListSubspacesRequest
-		(*ListSubspacesResponse)(nil),   // 4: packets.v1.ListSubspacesResponse
-		(*DestroySubspaceRequest)(nil),  // 5: packets.v1.DestroySubspaceRequest
-		(*DestroySubspaceResponse)(nil), // 6: packets.v1.DestroySubspaceResponse
-		(*TouchSubspaceRequest)(nil),    // 7: packets.v1.TouchSubspaceRequest
-		(*SubspaceResponse)(nil),        // 8: packets.v1.SubspaceResponse
-		nil,                             // 9: packets.v1.SubspaceRecord.MetadataEntry
-		nil,                             // 10: packets.v1.CreateSubspaceRequest.MetadataEntry
-	}
-)
-
+var file_proto_v1_subspace_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_proto_v1_subspace_proto_goTypes = []any{
+	(*SubspaceRecord)(nil),          // 0: packets.v1.SubspaceRecord
+	(*CreateSubspaceRequest)(nil),   // 1: packets.v1.CreateSubspaceRequest
+	(*GetSubspaceRequest)(nil),      // 2: packets.v1.GetSubspaceRequest
+	(*ListSubspacesRequest)(nil),    // 3: packets.v1.ListSubspacesRequest
+	(*ListSubspacesResponse)(nil),   // 4: packets.v1.ListSubspacesResponse
+	(*DestroySubspaceRequest)(nil),  // 5: packets.v1.DestroySubspaceRequest
+	(*DestroySubspaceResponse)(nil), // 6: packets.v1.DestroySubspaceResponse
+	(*TouchSubspaceRequest)(nil),    // 7: packets.v1.TouchSubspaceRequest
+	(*SleepSubspaceRequest)(nil),    // 8: packets.v1.SleepSubspaceRequest
+	(*WakeSubspaceRequest)(nil),     // 9: packets.v1.WakeSubspaceRequest
+	(*SubspaceResponse)(nil),        // 10: packets.v1.SubspaceResponse
+	nil,                             // 11: packets.v1.SubspaceRecord.MetadataEntry
+	nil,                             // 12: packets.v1.CreateSubspaceRequest.MetadataEntry
+}
 var file_proto_v1_subspace_proto_depIdxs = []int32{
-	9,  // 0: packets.v1.SubspaceRecord.metadata:type_name -> packets.v1.SubspaceRecord.MetadataEntry
-	10, // 1: packets.v1.CreateSubspaceRequest.metadata:type_name -> packets.v1.CreateSubspaceRequest.MetadataEntry
+	11, // 0: packets.v1.SubspaceRecord.metadata:type_name -> packets.v1.SubspaceRecord.MetadataEntry
+	12, // 1: packets.v1.CreateSubspaceRequest.metadata:type_name -> packets.v1.CreateSubspaceRequest.MetadataEntry
 	0,  // 2: packets.v1.ListSubspacesResponse.subspaces:type_name -> packets.v1.SubspaceRecord
 	0,  // 3: packets.v1.SubspaceResponse.subspace:type_name -> packets.v1.SubspaceRecord
 	1,  // 4: packets.v1.SubspaceService.CreateSubspace:input_type -> packets.v1.CreateSubspaceRequest
@@ -635,13 +727,17 @@ var file_proto_v1_subspace_proto_depIdxs = []int32{
 	3,  // 6: packets.v1.SubspaceService.ListSubspaces:input_type -> packets.v1.ListSubspacesRequest
 	5,  // 7: packets.v1.SubspaceService.DestroySubspace:input_type -> packets.v1.DestroySubspaceRequest
 	7,  // 8: packets.v1.SubspaceService.TouchSubspace:input_type -> packets.v1.TouchSubspaceRequest
-	8,  // 9: packets.v1.SubspaceService.CreateSubspace:output_type -> packets.v1.SubspaceResponse
-	8,  // 10: packets.v1.SubspaceService.GetSubspace:output_type -> packets.v1.SubspaceResponse
-	4,  // 11: packets.v1.SubspaceService.ListSubspaces:output_type -> packets.v1.ListSubspacesResponse
-	6,  // 12: packets.v1.SubspaceService.DestroySubspace:output_type -> packets.v1.DestroySubspaceResponse
-	8,  // 13: packets.v1.SubspaceService.TouchSubspace:output_type -> packets.v1.SubspaceResponse
-	9,  // [9:14] is the sub-list for method output_type
-	4,  // [4:9] is the sub-list for method input_type
+	8,  // 9: packets.v1.SubspaceService.SleepSubspace:input_type -> packets.v1.SleepSubspaceRequest
+	9,  // 10: packets.v1.SubspaceService.WakeSubspace:input_type -> packets.v1.WakeSubspaceRequest
+	10, // 11: packets.v1.SubspaceService.CreateSubspace:output_type -> packets.v1.SubspaceResponse
+	10, // 12: packets.v1.SubspaceService.GetSubspace:output_type -> packets.v1.SubspaceResponse
+	4,  // 13: packets.v1.SubspaceService.ListSubspaces:output_type -> packets.v1.ListSubspacesResponse
+	6,  // 14: packets.v1.SubspaceService.DestroySubspace:output_type -> packets.v1.DestroySubspaceResponse
+	10, // 15: packets.v1.SubspaceService.TouchSubspace:output_type -> packets.v1.SubspaceResponse
+	10, // 16: packets.v1.SubspaceService.SleepSubspace:output_type -> packets.v1.SubspaceResponse
+	10, // 17: packets.v1.SubspaceService.WakeSubspace:output_type -> packets.v1.SubspaceResponse
+	11, // [11:18] is the sub-list for method output_type
+	4,  // [4:11] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -658,7 +754,7 @@ func file_proto_v1_subspace_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_v1_subspace_proto_rawDesc), len(file_proto_v1_subspace_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
