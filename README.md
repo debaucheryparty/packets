@@ -3,7 +3,6 @@
 Remote development execution platform that offloads heavy builds, test matrices, and shell commands from laptops to remote servers, dedicated VPS boxes, or peer workstations.
 
 [![Release][release-badge]][release-url]
-[![Build Status][actions-badge]][actions-url]
 [![Go Reference][godoc-badge]][godoc-url]
 [![MIT licensed][mit-badge]][mit-url]
 
