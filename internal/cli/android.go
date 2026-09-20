@@ -1335,7 +1335,15 @@ func validateSubspaceTarget(ctx context.Context, conn *grpc.ClientConn, subspace
 		return fmt.Errorf("resolve subspace %s: %w", subspaceFlag, err)
 	}
 	if subResp.Subspace.State == "sleeping" {
-		return fmt.Errorf("subspace %s is sleeping, run 'packets subspace wake %s' first", subspaceFlag, subspaceFlag)
+		wakeResp, wakeErr := subClient.WakeSubspace(ctx, &pb.WakeSubspaceRequest{Id: subspaceFlag})
+		if wakeErr != nil {
+			return fmt.Errorf("auto-wake subspace %s: %w", subspaceFlag, wakeErr)
+		}
+		if logger != nil {
+			logger.InfoContext(ctx, "auto-woke sleeping subspace", slog.String("subspace_id", subspaceFlag))
+		}
+		fmt.Printf("✓ Auto-woke sleeping subspace %s\n", wakeResp.Subspace.Id)
+		subResp = wakeResp
 	}
 	if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
 		return fmt.Errorf("subspace %s is not ready (state: %s)", subspaceFlag, subResp.Subspace.State)

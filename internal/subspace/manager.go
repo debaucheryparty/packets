@@ -188,6 +188,20 @@ func (m *Manager) Wake(ctx context.Context, id string) (apitypes.Subspace, error
 	return sub, nil
 }
 
+func (m *Manager) EnsureReady(ctx context.Context, id string) (apitypes.Subspace, error) {
+	sub, err := m.Get(ctx, id)
+	if err != nil {
+		return apitypes.Subspace{}, err
+	}
+	if sub.State == apitypes.SubspaceSleeping {
+		return m.Wake(ctx, id)
+	}
+	if sub.State != apitypes.SubspaceReady && sub.State != apitypes.SubspaceBusy {
+		return sub, fmt.Errorf("subspace %s is not ready (state: %s)", id, sub.State)
+	}
+	return sub, nil
+}
+
 func (m *Manager) Destroy(ctx context.Context, id string) error {
 	sub, err := m.store.GetSubspace(ctx, id)
 	if err != nil {

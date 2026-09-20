@@ -227,3 +227,31 @@ func TestManager_AutoSleepIdle(t *testing.T) {
 		t.Errorf("expected 0 already sleeping subspaces to be slept again, got %d", len(sleptAgain))
 	}
 }
+
+func TestManager_EnsureReady(t *testing.T) {
+	mgr := setupTestManager(t)
+	ctx := context.Background()
+
+	sub, err := mgr.Create(ctx, CreateOptions{ProjectID: "p-wake", OwnerID: "grace"})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	readySub, err := mgr.EnsureReady(ctx, sub.ID)
+	if err != nil || readySub.State != apitypes.SubspaceReady {
+		t.Fatalf("EnsureReady on ready failed: %v, state=%s", err, readySub.State)
+	}
+
+	_, err = mgr.Sleep(ctx, sub.ID)
+	if err != nil {
+		t.Fatalf("Sleep failed: %v", err)
+	}
+
+	autoWoken, err := mgr.EnsureReady(ctx, sub.ID)
+	if err != nil {
+		t.Fatalf("EnsureReady auto-wake failed: %v", err)
+	}
+	if autoWoken.State != apitypes.SubspaceReady {
+		t.Errorf("expected state ready after auto-wake, got %s", autoWoken.State)
+	}
+}

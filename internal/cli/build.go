@@ -170,7 +170,13 @@ func executeViaScheduler(
 			return fmt.Errorf("resolve subspace %s: %w", subspaceID, err)
 		}
 		if subResp.Subspace.State == "sleeping" {
-			return fmt.Errorf("subspace %s is sleeping, run 'packets subspace wake %s' first", subspaceID, subspaceID)
+			wakeResp, wakeErr := subClient.WakeSubspace(ctx, &pb.WakeSubspaceRequest{Id: subspaceID})
+			if wakeErr != nil {
+				return fmt.Errorf("auto-wake subspace %s: %w", subspaceID, wakeErr)
+			}
+			logger.InfoContext(ctx, "auto-woke sleeping subspace", slog.String("subspace_id", subspaceID))
+			fmt.Printf("✓ Auto-woke sleeping subspace %s\n", wakeResp.Subspace.Id)
+			subResp = wakeResp
 		}
 		if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
 			return fmt.Errorf("subspace %s is not ready (state: %s)", subspaceID, subResp.Subspace.State)

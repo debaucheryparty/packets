@@ -295,30 +295,44 @@ func newServiceLogsCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 }
 
 func resolveSubspaceID(ctx context.Context, conn *grpc.ClientConn, subspaceFlag string) (string, error) {
+	var subID string
 	if subspaceFlag != "" {
-		return subspaceFlag, nil
+		subID = subspaceFlag
+	} else {
+		pwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("getwd: %w", err)
+		}
+
+		projectID := project.ResolveProjectID(pwd)
+		subClient := pb.NewSubspaceServiceClient(conn)
+		listResp, err := subClient.ListSubspaces(ctx, &pb.ListSubspacesRequest{
+			ProjectId: projectID,
+		})
+		if err == nil && len(listResp.Subspaces) > 0 {
+			subID = listResp.Subspaces[0].Id
+		} else {
+			allResp, err := subClient.ListSubspaces(ctx, &pb.ListSubspacesRequest{})
+			if err == nil && len(allResp.Subspaces) == 1 {
+				subID = allResp.Subspaces[0].Id
+			}
+		}
+
+		if subID == "" {
+			return "", fmt.Errorf("no subspace specified and none found for project %q; specify --subspace <id> or create one with 'packets subspace create'", projectID)
+		}
 	}
 
-	pwd, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("getwd: %w", err)
-	}
-
-	projectID := project.ResolveProjectID(pwd)
 	subClient := pb.NewSubspaceServiceClient(conn)
-	listResp, err := subClient.ListSubspaces(ctx, &pb.ListSubspacesRequest{
-		ProjectId: projectID,
-	})
-	if err == nil && len(listResp.Subspaces) > 0 {
-		return listResp.Subspaces[0].Id, nil
+	subResp, err := subClient.GetSubspace(ctx, &pb.GetSubspaceRequest{Id: subID})
+	if err == nil && subResp != nil && subResp.Subspace != nil && subResp.Subspace.State == "sleeping" {
+		wakeResp, wakeErr := subClient.WakeSubspace(ctx, &pb.WakeSubspaceRequest{Id: subID})
+		if wakeErr == nil && wakeResp != nil {
+			fmt.Printf("✓ Auto-woke sleeping subspace %s\n", wakeResp.Subspace.Id)
+		}
 	}
 
-	allResp, err := subClient.ListSubspaces(ctx, &pb.ListSubspacesRequest{})
-	if err == nil && len(allResp.Subspaces) == 1 {
-		return allResp.Subspaces[0].Id, nil
-	}
-
-	return "", fmt.Errorf("no subspace specified and none found for project %q; specify --subspace <id> or create one with 'packets subspace create'", projectID)
+	return subID, nil
 }
 
 func newServiceUpCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
