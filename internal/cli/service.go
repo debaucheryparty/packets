@@ -11,6 +11,7 @@ import (
 
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/project"
+	"github.com/debaucheryparty/packets/pkg/devfile"
 	pb "github.com/debaucheryparty/packets/proto/v1"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -29,6 +30,8 @@ func NewServiceCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		newServiceStopCommand(cfg, logger),
 		newServiceRestartCommand(cfg, logger),
 		newServiceLogsCommand(cfg, logger),
+		newServiceUpCommand(cfg, logger),
+		newServiceDownCommand(cfg, logger),
 	)
 
 	return cmd
@@ -316,4 +319,152 @@ func resolveSubspaceID(ctx context.Context, conn *grpc.ClientConn, subspaceFlag 
 	}
 
 	return "", fmt.Errorf("no subspace specified and none found for project %q; specify --subspace <id> or create one with 'packets subspace create'", projectID)
+}
+
+func newServiceUpCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
+	var (
+		subspaceFlag string
+		driverFlag   string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "up [dir]",
+		Short: "Start all services declared in packets.yaml for a Subspace",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			dir := "."
+			if len(args) > 0 {
+				dir = args[0]
+			}
+
+			df, err := devfile.Load(dir)
+			if err != nil {
+				return fmt.Errorf("load devfile: %w", err)
+			}
+			if df == nil || len(df.Services) == 0 {
+				return fmt.Errorf("no services defined in devfile in %s", dir)
+			}
+
+			conn, err := DialScheduler(ctx, cfg)
+			if err != nil {
+				return fmt.Errorf("connect to packetsd: %w", err)
+			}
+			defer func() { _ = conn.Close() }()
+
+			subID, err := resolveSubspaceID(ctx, conn, subspaceFlag)
+			if err != nil {
+				return err
+			}
+
+			if driverFlag == "" {
+				driverFlag = "process"
+			}
+
+			client := pb.NewRemoteServiceServiceClient(conn)
+			for _, s := range df.Services {
+				var cmdArgs []string
+				if s.Command != "" {
+					cmdArgs = strings.Fields(s.Command)
+				}
+				req := &pb.StartServiceRequest{
+					SubspaceId:  subID,
+					Name:        s.Name,
+					Image:       s.Image,
+					Command:     cmdArgs,
+					Ports:       s.Ports,
+					Environment: s.Environment,
+					Driver:      driverFlag,
+				}
+				resp, err := client.StartService(ctx, req)
+				if err != nil {
+					return fmt.Errorf("start service %s: %w", s.Name, err)
+				}
+				fmt.Printf("✓ Service %s started (status: %s, driver: %s)\n", resp.Service.Name, resp.Service.Status, resp.Service.Driver)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&subspaceFlag, "subspace", "", "Target remote Subspace ID")
+	cmd.Flags().StringVar(&driverFlag, "driver", "process", "Service driver backend (process, docker)")
+
+	return cmd
+}
+
+func newServiceDownCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
+	var (
+		subspaceFlag string
+		allFlag      bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "down [dir]",
+		Short: "Stop services in a Subspace",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			dir := "."
+			if len(args) > 0 {
+				dir = args[0]
+			}
+
+			conn, err := DialScheduler(ctx, cfg)
+			if err != nil {
+				return fmt.Errorf("connect to packetsd: %w", err)
+			}
+			defer func() { _ = conn.Close() }()
+
+			subID, err := resolveSubspaceID(ctx, conn, subspaceFlag)
+			if err != nil {
+				return err
+			}
+
+			client := pb.NewRemoteServiceServiceClient(conn)
+
+			var serviceNames []string
+			if !allFlag {
+				df, err := devfile.Load(dir)
+				if err == nil && df != nil && len(df.Services) > 0 {
+					for _, s := range df.Services {
+						serviceNames = append(serviceNames, s.Name)
+					}
+				}
+			}
+
+			if len(serviceNames) == 0 {
+				listResp, err := client.ListServices(ctx, &pb.ListServicesRequest{SubspaceId: subID})
+				if err != nil {
+					return fmt.Errorf("list services: %w", err)
+				}
+				for _, s := range listResp.Services {
+					if s.Status == "running" || s.Status == "starting" {
+						serviceNames = append(serviceNames, s.Name)
+					}
+				}
+			}
+
+			if len(serviceNames) == 0 {
+				fmt.Printf("No running services to stop in subspace %s\n", subID)
+				return nil
+			}
+
+			for _, name := range serviceNames {
+				resp, err := client.StopService(ctx, &pb.StopServiceRequest{
+					SubspaceId: subID,
+					NameOrId:   name,
+				})
+				if err != nil {
+					return fmt.Errorf("stop service %s: %w", name, err)
+				}
+				fmt.Printf("✓ Service %s stopped (status: %s)\n", resp.Service.Name, resp.Service.Status)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&subspaceFlag, "subspace", "", "Target remote Subspace ID")
+	cmd.Flags().BoolVar(&allFlag, "all", false, "Stop all running services in the subspace")
+
+	return cmd
 }

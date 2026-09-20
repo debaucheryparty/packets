@@ -119,3 +119,59 @@ func TestRemoteService_GRPC(t *testing.T) {
 		t.Errorf("expected status running, got %s", restartResp.Service.Status)
 	}
 }
+
+func TestRemoteService_DevfileOrchestration(t *testing.T) {
+	client, cleanup := setupTestRemoteServiceServer(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	subID := "sub-devfile-test"
+
+	services := []struct {
+		name    string
+		command []string
+		ports   []string
+	}{
+		{name: "db", command: []string{"echo", "db ready"}, ports: []string{"5432"}},
+		{name: "cache", command: []string{"echo", "cache ready"}, ports: []string{"6379"}},
+	}
+
+	for _, s := range services {
+		resp, err := client.StartService(ctx, &pb.StartServiceRequest{
+			SubspaceId: subID,
+			Name:       s.name,
+			Command:    s.command,
+			Ports:      s.ports,
+			Driver:     "process",
+		})
+		if err != nil {
+			t.Fatalf("failed to start %s: %v", s.name, err)
+		}
+		if resp.Service.Status != "running" {
+			t.Errorf("expected %s running, got %s", s.name, resp.Service.Status)
+		}
+	}
+
+	listResp, err := client.ListServices(ctx, &pb.ListServicesRequest{SubspaceId: subID})
+	if err != nil {
+		t.Fatalf("ListServices failed: %v", err)
+	}
+	if len(listResp.Services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(listResp.Services))
+	}
+
+	for _, s := range services {
+		stopResp, err := client.StopService(ctx, &pb.StopServiceRequest{
+			SubspaceId: subID,
+			NameOrId:   s.name,
+		})
+		if err != nil {
+			t.Fatalf("failed to stop %s: %v", s.name, err)
+		}
+		if stopResp.Service.Status != "stopped" {
+			t.Errorf("expected %s stopped, got %s", s.name, stopResp.Service.Status)
+		}
+	}
+}
