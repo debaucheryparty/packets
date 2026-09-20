@@ -8,6 +8,7 @@ import (
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/environment"
 	"github.com/debaucheryparty/packets/internal/project"
+	"github.com/debaucheryparty/packets/pkg/devfile"
 	"github.com/spf13/cobra"
 )
 
@@ -63,6 +64,20 @@ Automatically detects toolchains and components in the workspace.`,
 
 			if err := project.SaveConfig(absDir, cfg); err != nil {
 				return fmt.Errorf("failed to save project configuration: %w", err)
+			}
+
+			if _, found := devfile.Find(absDir); !found {
+				var compNames []string
+				if topo != nil {
+					for _, comp := range topo.Components {
+						compNames = append(compNames, string(comp.Type))
+					}
+				}
+				df := devfile.Scaffold(cfg.ProjectID, compNames)
+				devfilePath := filepath.Join(absDir, "packets.yaml")
+				if err := devfile.Write(devfilePath, df); err == nil {
+					fmt.Printf("packets :: devfile generated at %s\n", devfilePath)
+				}
 			}
 
 			fmt.Printf("packets :: project initialized [%s] in %s\n", cfg.ProjectID, absDir)

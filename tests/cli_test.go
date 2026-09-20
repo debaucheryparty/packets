@@ -269,6 +269,11 @@ func TestCLI_InitCommand(t *testing.T) {
 	if !bytes.Contains(data, []byte("custom-proj-id")) {
 		t.Errorf("expected custom-proj-id in project.json, got: %s", string(data))
 	}
+
+	devfileFile := filepath.Join(tempDir, "packets.yaml")
+	if _, err := os.Stat(devfileFile); err != nil {
+		t.Fatalf("expected packets.yaml to exist at %s", devfileFile)
+	}
 }
 
 func TestCLI_StatusCommand(t *testing.T) {

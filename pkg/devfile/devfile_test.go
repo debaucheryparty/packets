@@ -109,3 +109,31 @@ build:
 		t.Fatalf("expected loaded devfile name my-app, got %+v (err=%v)", loaded, err)
 	}
 }
+
+func TestScaffoldAndWrite(t *testing.T) {
+	tempDir := t.TempDir()
+
+	df := Scaffold("test-proj", []string{"go", "rust", "android", "node"})
+	if df == nil || df.Name != "test-proj" {
+		t.Fatalf("expected scaffolded devfile with name test-proj, got %+v", df)
+	}
+	if df.Environment.Go != "1.24" {
+		t.Errorf("expected go 1.24, got %s", df.Environment.Go)
+	}
+	if df.Environment.Java != "21" || df.Environment.Android.SDK != "35" {
+		t.Errorf("expected android sdk 35 and java 21, got %+v", df.Environment)
+	}
+
+	target := filepath.Join(tempDir, "packets.yaml")
+	if err := Write(target, df); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	loaded, err := Load(tempDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("Load scaffolded failed: %v", err)
+	}
+	if loaded.Name != "test-proj" {
+		t.Errorf("expected loaded name test-proj, got %s", loaded.Name)
+	}
+}
