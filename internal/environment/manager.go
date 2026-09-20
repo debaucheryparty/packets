@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 type Manager struct {
@@ -13,6 +14,8 @@ type Manager struct {
 	android  *AndroidResolver
 	zephyr   *ZephyrResolver
 	generic  *GenericResolver
+	cache    map[EnvironmentID]bool
+	cacheMu  sync.RWMutex
 }
 
 func NewManager() *Manager {
@@ -21,7 +24,20 @@ func NewManager() *Manager {
 		android:  NewAndroidResolver(),
 		zephyr:   NewZephyrResolver(),
 		generic:  NewGenericResolver(),
+		cache:    make(map[EnvironmentID]bool),
 	}
+}
+
+func (m *Manager) IsCached(id EnvironmentID) bool {
+	m.cacheMu.RLock()
+	defer m.cacheMu.RUnlock()
+	return m.cache[id]
+}
+
+func (m *Manager) MarkCached(id EnvironmentID) {
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
+	m.cache[id] = true
 }
 
 func (m *Manager) Detect(dir string) (*ProjectTopology, error) {
