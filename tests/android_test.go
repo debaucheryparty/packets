@@ -133,4 +133,3 @@ func TestAndroid_SubspaceTargetValidation(t *testing.T) {
 		t.Errorf("expected sleeping state, got %s", getSleeping.Subspace.State)
 	}
 }
-

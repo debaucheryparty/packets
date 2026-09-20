@@ -889,5 +889,3 @@ func (s *JobStore) UpdateTransaction(ctx context.Context, id string, status apit
 	}
 	return nil
 }
-
-
