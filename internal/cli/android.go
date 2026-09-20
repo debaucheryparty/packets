@@ -296,15 +296,27 @@ func streamRemoteCommand(ctx context.Context, cfg *config.Config, w io.Writer, a
 }
 
 func newAndroidDevicesCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "devices",
 		Short: "List Android devices/emulators on the remote node",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_ = logger
+			ctx := cmd.Context()
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+			if subspaceFlag != "" {
+				conn, err := DialScheduler(ctx, cfg)
+				if err != nil {
+					return fmt.Errorf("connect to packetsd: %w", err)
+				}
+				defer func() { _ = conn.Close() }()
+				if err := validateSubspaceTarget(ctx, conn, subspaceFlag, logger); err != nil {
+					return err
+				}
+			}
+
 			adb := android.NewExecADBClient()
-			devices, err := adb.Devices(cmd.Context())
+			devices, err := adb.Devices(ctx)
 			if err != nil {
-				lines, remErr := execRemoteCommand(cmd.Context(), cfg, "adb", "devices")
+				lines, remErr := execRemoteCommand(ctx, cfg, "adb", "devices")
 				if remErr == nil {
 					devices = android.ParseDevicesOutput(strings.Join(lines, "\n"))
 				} else {
@@ -322,19 +334,34 @@ func newAndroidDevicesCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 			return nil
 		},
 	}
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
+	return cmd
 }
 
-func newAndroidInstallCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
+func newAndroidInstallCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <apk>",
 		Short: "Install an APK on the remote device",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			serial, _ := cmd.Flags().GetString("serial")
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+			if subspaceFlag != "" {
+				conn, err := DialScheduler(ctx, cfg)
+				if err != nil {
+					return fmt.Errorf("connect to packetsd: %w", err)
+				}
+				defer func() { _ = conn.Close() }()
+				if err := validateSubspaceTarget(ctx, conn, subspaceFlag, logger); err != nil {
+					return err
+				}
+			}
+
 			apk := args[0]
 			adb := android.NewExecADBClient()
 			fmt.Printf("Installing %s...\n", apk)
-			if err := adb.Install(cmd.Context(), serial, apk); err != nil {
+			if err := adb.Install(ctx, serial, apk); err != nil {
 				return fmt.Errorf("install: %w", err)
 			}
 			fmt.Println("✓ Installed")
@@ -342,6 +369,7 @@ func newAndroidInstallCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
 		},
 	}
 	cmd.Flags().String("serial", "", "Device serial (empty = first device)")
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	return cmd
 }
 
@@ -417,19 +445,32 @@ func findAPK(dir, variant string) (string, error) {
 	return matches[0], nil
 }
 
-func newAndroidShellCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
+func newAndroidShellCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "shell [command...]",
 		Short: "Open an ADB shell or execute a shell command on the remote Android device",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			serial, _ := cmd.Flags().GetString("serial")
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+			if subspaceFlag != "" {
+				conn, err := DialScheduler(ctx, cfg)
+				if err != nil {
+					return fmt.Errorf("connect to packetsd: %w", err)
+				}
+				defer func() { _ = conn.Close() }()
+				if err := validateSubspaceTarget(ctx, conn, subspaceFlag, logger); err != nil {
+					return err
+				}
+			}
+
 			adb := android.NewExecADBClient()
 			if len(args) == 0 {
-				if err := adb.ShellStream(cmd.Context(), serial, os.Stdout); err == nil {
+				if err := adb.ShellStream(ctx, serial, os.Stdout); err == nil {
 					return nil
 				}
 			} else {
-				if out, err := adb.Shell(cmd.Context(), serial, args...); err == nil {
+				if out, err := adb.Shell(ctx, serial, args...); err == nil {
 					fmt.Print(out)
 					return nil
 				}
@@ -441,22 +482,36 @@ func newAndroidShellCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 			}
 			remoteArgs = append(remoteArgs, "shell")
 			remoteArgs = append(remoteArgs, args...)
-			return streamRemoteCommand(cmd.Context(), cfg, os.Stdout, remoteArgs...)
+			return streamRemoteCommand(ctx, cfg, os.Stdout, remoteArgs...)
 		},
 	}
 	cmd.Flags().String("serial", "", "Device serial")
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	cmd.Flags().SetInterspersed(false)
 	return cmd
 }
 
-func newAndroidLogcatCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
+func newAndroidLogcatCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logcat",
 		Short: "Stream logcat output from the remote Android device",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
 			serial, _ := cmd.Flags().GetString("serial")
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+			if subspaceFlag != "" {
+				conn, err := DialScheduler(ctx, cfg)
+				if err != nil {
+					return fmt.Errorf("connect to packetsd: %w", err)
+				}
+				defer func() { _ = conn.Close() }()
+				if err := validateSubspaceTarget(ctx, conn, subspaceFlag, logger); err != nil {
+					return err
+				}
+			}
+
 			adb := android.NewExecADBClient()
-			if err := adb.Logcat(cmd.Context(), serial, os.Stdout); err == nil {
+			if err := adb.Logcat(ctx, serial, os.Stdout); err == nil {
 				return nil
 			}
 
@@ -465,10 +520,11 @@ func newAndroidLogcatCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command 
 				remoteArgs = append(remoteArgs, "-s", serial)
 			}
 			remoteArgs = append(remoteArgs, "logcat")
-			return streamRemoteCommand(cmd.Context(), cfg, os.Stdout, remoteArgs...)
+			return streamRemoteCommand(ctx, cfg, os.Stdout, remoteArgs...)
 		},
 	}
 	cmd.Flags().String("serial", "", "Device serial")
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	return cmd
 }
 
