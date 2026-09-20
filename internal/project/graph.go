@@ -165,6 +165,100 @@ func (g *BuildGraph) BuildOrderFor(targetName string) ([]ComponentConfig, error)
 	return subset, nil
 }
 
+func (g *BuildGraph) BuildBatches() ([][]ComponentConfig, error) {
+	inDegree := make(map[string]int)
+	for _, name := range g.names {
+		inDegree[name] = 0
+	}
+
+	dependents := make(map[string][]string)
+	for name, deps := range g.deps {
+		for _, dep := range deps {
+			dependents[dep] = append(dependents[dep], name)
+			inDegree[name]++
+		}
+	}
+
+	var currentLevel []string
+	for _, name := range g.names {
+		if inDegree[name] == 0 {
+			currentLevel = append(currentLevel, name)
+		}
+	}
+
+	var batches [][]ComponentConfig
+	processedCount := 0
+
+	for len(currentLevel) > 0 {
+		var batch []ComponentConfig
+		var nextLevel []string
+
+		for _, name := range currentLevel {
+			batch = append(batch, g.components[name])
+			processedCount++
+
+			for _, next := range dependents[name] {
+				inDegree[next]--
+				if inDegree[next] == 0 {
+					nextLevel = append(nextLevel, next)
+				}
+			}
+		}
+
+		batches = append(batches, batch)
+		currentLevel = nextLevel
+	}
+
+	if processedCount != len(g.names) {
+		return nil, fmt.Errorf("failed to determine build batches: unresolved cycle")
+	}
+
+	return batches, nil
+}
+
+func (g *BuildGraph) BuildBatchesFor(targetName string) ([][]ComponentConfig, error) {
+	if _, ok := g.components[targetName]; !ok {
+		return nil, fmt.Errorf("target component %q not found", targetName)
+	}
+
+	needed := make(map[string]bool)
+	var collect func(name string)
+	collect = func(name string) {
+		if needed[name] {
+			return
+		}
+		needed[name] = true
+		for _, dep := range g.deps[name] {
+			collect(dep)
+		}
+	}
+	collect(targetName)
+
+	allBatches, err := g.BuildBatches()
+	if err != nil {
+		return nil, err
+	}
+
+	var filteredBatches [][]ComponentConfig
+	for _, batch := range allBatches {
+		var filtered []ComponentConfig
+		for _, c := range batch {
+			name := c.Name
+			if name == "" {
+				name = c.Type
+			}
+			if needed[name] {
+				filtered = append(filtered, c)
+			}
+		}
+		if len(filtered) > 0 {
+			filteredBatches = append(filteredBatches, filtered)
+		}
+	}
+
+	return filteredBatches, nil
+}
+
 type ArtifactRecorder interface {
 	RecordArtifact(ctx context.Context, workflowID, stageID, path string) error
 }
