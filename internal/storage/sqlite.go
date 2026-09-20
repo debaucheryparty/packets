@@ -34,11 +34,15 @@ var migration005 string
 //go:embed migrations/006_services.sql
 var migration006 string
 
+//go:embed migrations/007_transactions.sql
+var migration007 string
+
 var (
-	ErrJobNotFound      = errors.New("job not found")
-	ErrCacheMiss        = errors.New("cache miss")
-	ErrSubspaceNotFound = errors.New("subspace not found")
-	ErrServiceNotFound  = errors.New("service not found")
+	ErrJobNotFound         = errors.New("job not found")
+	ErrCacheMiss           = errors.New("cache miss")
+	ErrSubspaceNotFound    = errors.New("subspace not found")
+	ErrServiceNotFound     = errors.New("service not found")
+	ErrTransactionNotFound = errors.New("transaction not found")
 )
 
 type JobStore struct {
@@ -798,4 +802,92 @@ func (s *JobStore) DeleteService(ctx context.Context, subspaceID, nameOrID strin
 	}
 	return nil
 }
+
+func (s *JobStore) CreateTransaction(ctx context.Context, tx apitypes.Transaction) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO workspace_transactions (id, project_id, subspace_id, base_snapshot_ref, working_snapshot_ref, status, description, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		tx.ID, tx.ProjectID, tx.SubspaceID, tx.BaseSnapshotRef, tx.WorkingSnapshotRef,
+		string(tx.Status), tx.Description, tx.CreatedAt.UTC(), tx.UpdatedAt.UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("CreateTransaction %s: %w", tx.ID, err)
+	}
+	return nil
+}
+
+func (s *JobStore) GetTransaction(ctx context.Context, id string) (apitypes.Transaction, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, project_id, subspace_id, base_snapshot_ref, working_snapshot_ref, status, description, created_at, updated_at
+		 FROM workspace_transactions WHERE id = ?`, id,
+	)
+	var tx apitypes.Transaction
+	var statusStr string
+	err := row.Scan(
+		&tx.ID, &tx.ProjectID, &tx.SubspaceID, &tx.BaseSnapshotRef, &tx.WorkingSnapshotRef,
+		&statusStr, &tx.Description, &tx.CreatedAt, &tx.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return apitypes.Transaction{}, ErrTransactionNotFound
+	}
+	if err != nil {
+		return apitypes.Transaction{}, fmt.Errorf("GetTransaction %s: %w", id, err)
+	}
+	tx.Status = apitypes.TransactionStatus(statusStr)
+	return tx, nil
+}
+
+func (s *JobStore) ListTransactions(ctx context.Context, projectID string) ([]apitypes.Transaction, error) {
+	query := `SELECT id, project_id, subspace_id, base_snapshot_ref, working_snapshot_ref, status, description, created_at, updated_at FROM workspace_transactions WHERE 1=1`
+	var args []interface{}
+	if projectID != "" {
+		query += ` AND project_id = ?`
+		args = append(args, projectID)
+	}
+	query += ` ORDER BY created_at DESC`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ListTransactions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []apitypes.Transaction
+	for rows.Next() {
+		var tx apitypes.Transaction
+		var statusStr string
+		if err := rows.Scan(
+			&tx.ID, &tx.ProjectID, &tx.SubspaceID, &tx.BaseSnapshotRef, &tx.WorkingSnapshotRef,
+			&statusStr, &tx.Description, &tx.CreatedAt, &tx.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("ListTransactions scan: %w", err)
+		}
+		tx.Status = apitypes.TransactionStatus(statusStr)
+		results = append(results, tx)
+	}
+	return results, rows.Err()
+}
+
+func (s *JobStore) UpdateTransaction(ctx context.Context, id string, status apitypes.TransactionStatus, workingSnapshotRef string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	now := time.Now().UTC()
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE workspace_transactions SET status = ?, working_snapshot_ref = ?, updated_at = ? WHERE id = ?`,
+		string(status), workingSnapshotRef, now, id,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateTransaction %s: %w", id, err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrTransactionNotFound
+	}
+	return nil
+}
+
 

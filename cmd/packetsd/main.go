@@ -21,6 +21,7 @@ import (
 	"github.com/debaucheryparty/packets/internal/storage"
 	"github.com/debaucheryparty/packets/internal/subspace"
 	"github.com/debaucheryparty/packets/internal/toolchain"
+	"github.com/debaucheryparty/packets/internal/transaction"
 	"github.com/debaucheryparty/packets/internal/worker"
 	"github.com/debaucheryparty/packets/internal/workspace"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
@@ -191,6 +192,9 @@ func main() {
 
 	serviceMgr := service.NewManager(store, logger)
 	pb.RegisterRemoteServiceServiceServer(grpcServer, service.NewServer(serviceMgr))
+
+	txMgr := transaction.NewManager(store, logger)
+	pb.RegisterTransactionServiceServer(grpcServer, transaction.NewServer(txMgr))
 
 	listener, err := net.Listen("tcp", cfg.SchedulerAddr())
 	if err != nil {

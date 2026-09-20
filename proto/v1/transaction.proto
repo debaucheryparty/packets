@@ -1,0 +1,56 @@
+syntax = "proto3";
+package packets.v1;
+
+option go_package = "github.com/debaucheryparty/packets/proto/v1";
+
+service TransactionService {
+  rpc CreateTransaction(CreateTransactionRequest) returns (TransactionResponse);
+  rpc GetTransaction(GetTransactionRequest) returns (TransactionResponse);
+  rpc CommitTransaction(CommitTransactionRequest) returns (TransactionResponse);
+  rpc RollbackTransaction(RollbackTransactionRequest) returns (TransactionResponse);
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
+}
+
+message TransactionRecord {
+  string id = 1;
+  string project_id = 2;
+  string subspace_id = 3;
+  string base_snapshot_ref = 4;
+  string working_snapshot_ref = 5;
+  string status = 6;
+  string description = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message CreateTransactionRequest {
+  string project_id = 1;
+  string subspace_id = 2;
+  string base_snapshot_ref = 3;
+  string description = 4;
+}
+
+message GetTransactionRequest {
+  string id = 1;
+}
+
+message CommitTransactionRequest {
+  string id = 1;
+  string working_snapshot_ref = 2;
+}
+
+message RollbackTransactionRequest {
+  string id = 1;
+}
+
+message ListTransactionsRequest {
+  string project_id = 1;
+}
+
+message ListTransactionsResponse {
+  repeated TransactionRecord transactions = 1;
+}
+
+message TransactionResponse {
+  TransactionRecord transaction = 1;
+}

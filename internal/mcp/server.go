@@ -411,6 +411,112 @@ func (s *Server) listTools() []Tool {
 				Required: []string{"subspace_id"},
 			},
 		},
+		{
+			Name:        "packets_subspace_sleep",
+			Description: "Put a persistent remote Subspace into sleeping state to conserve remote compute",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"subspace_id": {Type: "string", Description: "Subspace ID to sleep"},
+				},
+				Required: []string{"subspace_id"},
+			},
+		},
+		{
+			Name:        "packets_subspace_wake",
+			Description: "Wake a sleeping remote Subspace and restore its environment to ready state",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"subspace_id": {Type: "string", Description: "Subspace ID to wake"},
+				},
+				Required: []string{"subspace_id"},
+			},
+		},
+		{
+			Name:        "packets_service_list",
+			Description: "List running services in a remote Subspace",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"subspace_id": {Type: "string", Description: "Subspace ID"},
+				},
+				Required: []string{"subspace_id"},
+			},
+		},
+		{
+			Name:        "packets_service_start",
+			Description: "Start a background service in a remote Subspace",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"subspace_id": {Type: "string", Description: "Subspace ID"},
+					"name":        {Type: "string", Description: "Service name (e.g. postgres, redis)"},
+					"image":       {Type: "string", Description: "Container image or command"},
+					"driver":      {Type: "string", Description: "Driver (process, docker)"},
+				},
+				Required: []string{"subspace_id", "name"},
+			},
+		},
+		{
+			Name:        "packets_service_stop",
+			Description: "Stop a background service in a remote Subspace",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"subspace_id": {Type: "string", Description: "Subspace ID"},
+					"name":        {Type: "string", Description: "Service name or ID"},
+				},
+				Required: []string{"subspace_id", "name"},
+			},
+		},
+		{
+			Name:        "packets_transaction_create",
+			Description: "Open a safe workspace modification transaction snapshotting clean state before AI modifications",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"dir":         {Type: "string", Description: "Project directory path"},
+					"project_id":  {Type: "string", Description: "Optional project identifier"},
+					"subspace_id": {Type: "string", Description: "Optional Subspace identifier"},
+					"description": {Type: "string", Description: "Transaction intent description"},
+				},
+			},
+		},
+		{
+			Name:        "packets_transaction_status",
+			Description: "Inspect the status and snapshot details of a workspace transaction",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"id": {Type: "string", Description: "Transaction ID"},
+				},
+				Required: []string{"id"},
+			},
+		},
+		{
+			Name:        "packets_transaction_commit",
+			Description: "Commit an open workspace transaction after successful build and verification",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"id":                   {Type: "string", Description: "Transaction ID"},
+					"working_snapshot_ref": {Type: "string", Description: "Optional snapshot reference to commit"},
+				},
+				Required: []string{"id"},
+			},
+		},
+		{
+			Name:        "packets_transaction_rollback",
+			Description: "Rollback a failed workspace transaction restoring workspace to base snapshot",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"id": {Type: "string", Description: "Transaction ID"},
+				},
+				Required: []string{"id"},
+			},
+		},
 	}
 }
 
@@ -1030,6 +1136,220 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Destroy subspace failed: " + err.Error())
 		}
 		return textResult(fmt.Sprintf("Subspace %s successfully destroyed", subID))
+
+	case "packets_subspace_sleep":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		subID, _ := params.Arguments["subspace_id"].(string)
+		if subID == "" {
+			return errorResult("subspace_id is required")
+		}
+		client := pb.NewSubspaceServiceClient(conn)
+		resp, err := client.SleepSubspace(ctx, &pb.SleepSubspaceRequest{Id: subID})
+		if err != nil {
+			return errorResult("Sleep subspace failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Subspace, "", "  ")
+		return textResult(string(data))
+
+	case "packets_subspace_wake":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		subID, _ := params.Arguments["subspace_id"].(string)
+		if subID == "" {
+			return errorResult("subspace_id is required")
+		}
+		client := pb.NewSubspaceServiceClient(conn)
+		resp, err := client.WakeSubspace(ctx, &pb.WakeSubspaceRequest{Id: subID})
+		if err != nil {
+			return errorResult("Wake subspace failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Subspace, "", "  ")
+		return textResult(string(data))
+
+	case "packets_service_list":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		subID, _ := params.Arguments["subspace_id"].(string)
+		if subID == "" {
+			return errorResult("subspace_id is required")
+		}
+		client := pb.NewRemoteServiceServiceClient(conn)
+		resp, err := client.ListServices(ctx, &pb.ListServicesRequest{SubspaceId: subID})
+		if err != nil {
+			return errorResult("List services failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Services, "", "  ")
+		return textResult(string(data))
+
+	case "packets_service_start":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		subID, _ := params.Arguments["subspace_id"].(string)
+		name, _ := params.Arguments["name"].(string)
+		image, _ := params.Arguments["image"].(string)
+		driver, _ := params.Arguments["driver"].(string)
+		if subID == "" || name == "" {
+			return errorResult("subspace_id and name are required")
+		}
+		client := pb.NewRemoteServiceServiceClient(conn)
+		resp, err := client.StartService(ctx, &pb.StartServiceRequest{
+			SubspaceId: subID,
+			Name:       name,
+			Image:      image,
+			Driver:     driver,
+		})
+		if err != nil {
+			return errorResult("Start service failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Service, "", "  ")
+		return textResult(string(data))
+
+	case "packets_service_stop":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		subID, _ := params.Arguments["subspace_id"].(string)
+		name, _ := params.Arguments["name"].(string)
+		if subID == "" || name == "" {
+			return errorResult("subspace_id and name are required")
+		}
+		client := pb.NewRemoteServiceServiceClient(conn)
+		resp, err := client.StopService(ctx, &pb.StopServiceRequest{
+			SubspaceId: subID,
+			NameOrId:   name,
+		})
+		if err != nil {
+			return errorResult("Stop service failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Service, "", "  ")
+		return textResult(string(data))
+
+	case "packets_transaction_create":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		projID, _ := params.Arguments["project_id"].(string)
+		if projID == "" {
+			projID = project.ResolveProjectID(dir)
+		}
+		subspaceID, _ := params.Arguments["subspace_id"].(string)
+		desc, _ := params.Arguments["description"].(string)
+
+		snapRef, err := workspace.UploadWorkspace(ctx, conn, dir, false)
+		if err != nil {
+			return errorResult("Workspace sync before transaction failed: " + err.Error())
+		}
+
+		client := pb.NewTransactionServiceClient(conn)
+		resp, err := client.CreateTransaction(ctx, &pb.CreateTransactionRequest{
+			ProjectId:       projID,
+			SubspaceId:      subspaceID,
+			BaseSnapshotRef: snapRef,
+			Description:     desc,
+		})
+		if err != nil {
+			return errorResult("Create transaction failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Transaction, "", "  ")
+		return textResult(string(data))
+
+	case "packets_transaction_status":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		id, _ := params.Arguments["id"].(string)
+		if id == "" {
+			return errorResult("id is required")
+		}
+		client := pb.NewTransactionServiceClient(conn)
+		resp, err := client.GetTransaction(ctx, &pb.GetTransactionRequest{Id: id})
+		if err != nil {
+			return errorResult("Get transaction failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Transaction, "", "  ")
+		return textResult(string(data))
+
+	case "packets_transaction_commit":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		id, _ := params.Arguments["id"].(string)
+		if id == "" {
+			return errorResult("id is required")
+		}
+		snapRef, _ := params.Arguments["working_snapshot_ref"].(string)
+		if snapRef == "" {
+			if sRef, err := workspace.UploadWorkspace(ctx, conn, dir, false); err == nil {
+				snapRef = sRef
+			}
+		}
+		client := pb.NewTransactionServiceClient(conn)
+		resp, err := client.CommitTransaction(ctx, &pb.CommitTransactionRequest{
+			Id:                 id,
+			WorkingSnapshotRef: snapRef,
+		})
+		if err != nil {
+			return errorResult("Commit transaction failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Transaction, "", "  ")
+		return textResult(string(data))
+
+	case "packets_transaction_rollback":
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		id, _ := params.Arguments["id"].(string)
+		if id == "" {
+			return errorResult("id is required")
+		}
+		client := pb.NewTransactionServiceClient(conn)
+		resp, err := client.RollbackTransaction(ctx, &pb.RollbackTransactionRequest{Id: id})
+		if err != nil {
+			return errorResult("Rollback transaction failed: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(resp.Transaction, "", "  ")
+		return textResult(string(data))
 
 	default:
 		return errorResult(fmt.Sprintf("Unknown tool: %s", params.Name))

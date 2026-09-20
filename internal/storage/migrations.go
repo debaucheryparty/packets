@@ -16,6 +16,7 @@ var migrations = []migration{
 	{4, migration004},
 	{5, migration005},
 	{6, migration006},
+	{7, migration007},
 }
 
 func runMigrations(db *sql.DB) error {

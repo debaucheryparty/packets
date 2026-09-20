@@ -58,6 +58,7 @@ func main() {
 		cli.NewCancelCommand(cfg, logger),
 		cli.NewSubspaceCommand(cfg, logger),
 		cli.NewServiceCommand(cfg, logger),
+		cli.NewTransactionCommand(cfg, logger),
 	)
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {

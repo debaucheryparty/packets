@@ -163,28 +163,37 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("Unmarshal list response: %v", err)
 	}
 
-	if len(listResp.Result.Tools) != 17 {
-		t.Errorf("expected 17 tools, got %d", len(listResp.Result.Tools))
+	if len(listResp.Result.Tools) != 26 {
+		t.Errorf("expected 26 tools, got %d", len(listResp.Result.Tools))
 	}
 
 	expectedTools := map[string]bool{
-		"packets_workspace_info":   false,
-		"packets_env_check":        false,
-		"packets_env_prepare":      false,
-		"packets_sync":             false,
-		"packets_sync_full":        false,
-		"packets_approve":          false,
-		"packets_build":            false,
-		"packets_test":             false,
-		"packets_exec":             false,
-		"packets_logs":             false,
-		"packets_artifacts":        false,
-		"packets_pull":             false,
-		"packets_status":           false,
-		"packets_subspace_create":  false,
-		"packets_subspace_list":    false,
-		"packets_subspace_status":  false,
-		"packets_subspace_destroy": false,
+		"packets_workspace_info":       false,
+		"packets_env_check":            false,
+		"packets_env_prepare":          false,
+		"packets_sync":                 false,
+		"packets_sync_full":            false,
+		"packets_approve":              false,
+		"packets_build":                false,
+		"packets_test":                 false,
+		"packets_exec":                 false,
+		"packets_logs":                 false,
+		"packets_artifacts":            false,
+		"packets_pull":                 false,
+		"packets_status":               false,
+		"packets_subspace_create":      false,
+		"packets_subspace_list":        false,
+		"packets_subspace_status":      false,
+		"packets_subspace_destroy":     false,
+		"packets_subspace_sleep":       false,
+		"packets_subspace_wake":        false,
+		"packets_service_list":         false,
+		"packets_service_start":        false,
+		"packets_service_stop":         false,
+		"packets_transaction_create":   false,
+		"packets_transaction_status":   false,
+		"packets_transaction_commit":   false,
+		"packets_transaction_rollback": false,
 	}
 
 	for _, tool := range listResp.Result.Tools {
