@@ -19,6 +19,7 @@ import (
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 	pb "github.com/debaucheryparty/packets/proto/v1"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
 )
 
 func NewAndroidCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
@@ -71,6 +72,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 			waitFlag, _ := cmd.Flags().GetBool("wait")
 			forceFlag, _ := cmd.Flags().GetBool("force")
 			benchmarkFlag, _ := cmd.Flags().GetBool("benchmark")
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
 
 			totalStart := time.Now()
 			gradleTask := variantToTask(variant)
@@ -81,6 +83,10 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 				return fmt.Errorf("connect to packetsd: %w", err)
 			}
 			defer func() { _ = conn.Close() }()
+
+			if err := validateSubspaceTarget(ctx, conn, subspaceFlag, logger); err != nil {
+				return err
+			}
 
 			uploadStart := time.Now()
 			fmt.Println("Uploading project to remote node...")
@@ -146,6 +152,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 	cmd.Flags().String("provider", "", "Named provider from config")
 	cmd.Flags().Bool("force", false, "Re-upload entire workspace")
 	cmd.Flags().Bool("benchmark", false, "Measure build timing (Phase 9)")
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	return cmd
 }
 
@@ -353,9 +360,15 @@ func newAndroidRunCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 			serial, _ := cmd.Flags().GetString("serial")
 			pkg, _ := cmd.Flags().GetString("package")
 			activity, _ := cmd.Flags().GetString("activity")
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+
+			buildArgs := []string{dir, "--wait=true"}
+			if subspaceFlag != "" {
+				buildArgs = append(buildArgs, "--subspace="+subspaceFlag)
+			}
 
 			buildCmd := newAndroidBuildCommand(cfg, logger)
-			buildCmd.SetArgs([]string{dir, "--wait=true"})
+			buildCmd.SetArgs(buildArgs)
 			if err := buildCmd.ExecuteContext(ctx); err != nil {
 				return fmt.Errorf("android build: %w", err)
 			}
@@ -391,6 +404,7 @@ func newAndroidRunCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 	cmd.Flags().String("serial", "", "Device serial")
 	cmd.Flags().String("package", "", "Android package name (e.g. com.example.app)")
 	cmd.Flags().String("activity", ".MainActivity", "Activity to launch")
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	return cmd
 }
 
@@ -485,6 +499,11 @@ func newAndroidScreenshotCommand(cfg *config.Config, logger *slog.Logger) *cobra
 			}
 			defer func() { _ = conn.Close() }()
 
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+			if err := validateSubspaceTarget(cmd.Context(), conn, subspaceFlag, logger); err != nil {
+				return err
+			}
+
 			client := pb.NewSchedulerClient(conn)
 			cacheKey := fmt.Sprintf("exec:screenshot:%d", time.Now().UnixNano())
 			resp, err := client.SubmitJob(cmd.Context(), &pb.SubmitJobRequest{
@@ -524,6 +543,7 @@ func newAndroidScreenshotCommand(cfg *config.Config, logger *slog.Logger) *cobra
 			}
 		},
 	}
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	return cmd
 }
 
@@ -552,6 +572,11 @@ func newAndroidTestCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comma
 				return err
 			}
 			defer func() { _ = conn.Close() }()
+
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+			if err := validateSubspaceTarget(ctx, conn, subspaceFlag, logger); err != nil {
+				return err
+			}
 
 			snapshotRef, err := workspace.UploadWorkspace(ctx, conn, proj.Root, false)
 			if err != nil {
@@ -589,6 +614,7 @@ func newAndroidTestCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comma
 	}
 	cmd.Flags().String("device", "", "Target device or emulator (e.g. Pixel-remote)")
 	cmd.Flags().String("serial", "", "Target device serial")
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	return cmd
 }
 
@@ -1242,3 +1268,25 @@ func newAndroidSetupCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 }
 
 var _ io.Writer = os.Stdout
+
+func validateSubspaceTarget(ctx context.Context, conn *grpc.ClientConn, subspaceFlag string, logger *slog.Logger) error {
+	if subspaceFlag == "" {
+		return nil
+	}
+	subClient := pb.NewSubspaceServiceClient(conn)
+	subResp, err := subClient.GetSubspace(ctx, &pb.GetSubspaceRequest{Id: subspaceFlag})
+	if err != nil {
+		return fmt.Errorf("resolve subspace %s: %w", subspaceFlag, err)
+	}
+	if subResp.Subspace.State == "sleeping" {
+		return fmt.Errorf("subspace %s is sleeping, run 'packets subspace wake %s' first", subspaceFlag, subspaceFlag)
+	}
+	if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
+		return fmt.Errorf("subspace %s is not ready (state: %s)", subspaceFlag, subResp.Subspace.State)
+	}
+	if logger != nil {
+		logger.InfoContext(ctx, "targeting subspace", slog.String("subspace_id", subspaceFlag), slog.String("worker", subResp.Subspace.WorkerId))
+	}
+	return nil
+}
+
