@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -163,8 +164,8 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("Unmarshal list response: %v", err)
 	}
 
-	if len(listResp.Result.Tools) != 26 {
-		t.Errorf("expected 26 tools, got %d", len(listResp.Result.Tools))
+	if len(listResp.Result.Tools) != 28 {
+		t.Errorf("expected 28 tools, got %d", len(listResp.Result.Tools))
 	}
 
 	expectedTools := map[string]bool{
@@ -194,6 +195,8 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		"packets_transaction_status":   false,
 		"packets_transaction_commit":   false,
 		"packets_transaction_rollback": false,
+		"packets_devfile_get":          false,
+		"packets_devfile_validate":     false,
 	}
 
 	for _, tool := range listResp.Result.Tools {
@@ -449,5 +452,77 @@ func TestMCPServer_DirectGRPCBypassRejection(t *testing.T) {
 	_, err = client.SubmitJob(context.Background(), reqForged)
 	if err == nil {
 		t.Fatalf("expected direct gRPC submit with forged ticket to be rejected")
+	}
+}
+
+func TestMCPServer_DevfileTools(t *testing.T) {
+	cfg := &config.Config{SchedulerGRPCPort: "50051"}
+	tmpDir := t.TempDir()
+	server := mcp.NewServer(cfg, nil, tmpDir)
+
+	validYAML := `
+name: webapp
+version: "1.0"
+services:
+  - name: api
+    image: golang:1.24
+ports:
+  - 8080
+`
+	res := callMCPTool(t, server, "packets_devfile_validate", map[string]interface{}{
+		"content": validYAML,
+	})
+	if res.IsError {
+		t.Fatalf("expected valid devfile content to succeed: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, "Valid devfile") {
+		t.Errorf("unexpected validation output: %s", res.Content[0].Text)
+	}
+
+	invalidYAML := `
+name: webapp
+ports:
+  - 999999
+`
+	res = callMCPTool(t, server, "packets_devfile_validate", map[string]interface{}{
+		"content": invalidYAML,
+	})
+	if !res.IsError {
+		t.Fatalf("expected invalid devfile content to fail")
+	}
+
+	res = callMCPTool(t, server, "packets_devfile_get", map[string]interface{}{
+		"dir": tmpDir,
+	})
+	if res.IsError {
+		t.Fatalf("unexpected error when devfile not found: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, "No packets.yaml") {
+		t.Errorf("expected not found message, got: %s", res.Content[0].Text)
+	}
+
+	devfilePath := filepath.Join(tmpDir, "packets.yaml")
+	if err := os.WriteFile(devfilePath, []byte(validYAML), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	res = callMCPTool(t, server, "packets_devfile_get", map[string]interface{}{
+		"dir": tmpDir,
+	})
+	if res.IsError {
+		t.Fatalf("devfile_get failed: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, "webapp") {
+		t.Errorf("expected json containing webapp, got: %s", res.Content[0].Text)
+	}
+
+	res = callMCPTool(t, server, "packets_devfile_validate", map[string]interface{}{
+		"dir": tmpDir,
+	})
+	if res.IsError {
+		t.Fatalf("devfile_validate on directory failed: %s", res.Content[0].Text)
+	}
+	if !strings.Contains(res.Content[0].Text, "Valid devfile") {
+		t.Errorf("unexpected validation output: %s", res.Content[0].Text)
 	}
 }

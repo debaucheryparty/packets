@@ -20,6 +20,7 @@ import (
 	"github.com/debaucheryparty/packets/internal/project"
 	"github.com/debaucheryparty/packets/internal/workspace"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/devfile"
 	pb "github.com/debaucheryparty/packets/proto/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -515,6 +516,27 @@ func (s *Server) listTools() []Tool {
 					"id": {Type: "string", Description: "Transaction ID"},
 				},
 				Required: []string{"id"},
+			},
+		},
+		{
+			Name:        "packets_devfile_get",
+			Description: "Read and parse the project's packets.yaml devfile specification",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"dir": {Type: "string", Description: "Project directory containing packets.yaml"},
+				},
+			},
+		},
+		{
+			Name:        "packets_devfile_validate",
+			Description: "Validate a packets.yaml devfile or content for syntax, ports, and service definitions",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"dir":     {Type: "string", Description: "Project directory containing packets.yaml"},
+					"content": {Type: "string", Description: "Optional raw YAML content to validate"},
+				},
 			},
 		},
 	}
@@ -1350,6 +1372,40 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 		}
 		data, _ := json.MarshalIndent(resp.Transaction, "", "  ")
 		return textResult(string(data))
+
+	case "packets_devfile_get":
+		df, err := devfile.Load(dir)
+		if err != nil {
+			return errorResult("Failed to parse devfile: " + err.Error())
+		}
+		if df == nil {
+			return textResult("No packets.yaml devfile found in " + dir)
+		}
+		data, err := json.MarshalIndent(df, "", "  ")
+		if err != nil {
+			return errorResult("Failed to serialize devfile: " + err.Error())
+		}
+		return textResult(string(data))
+
+	case "packets_devfile_validate":
+		content, _ := params.Arguments["content"].(string)
+		if content != "" {
+			df, err := devfile.Parse([]byte(content))
+			if err != nil {
+				return errorResult("Devfile validation failed: " + err.Error())
+			}
+			return textResult(fmt.Sprintf("✓ Valid devfile: %s (services: %d, ports: %d)", df.Name, len(df.Services), len(df.Ports)))
+		}
+
+		path, found := devfile.Find(dir)
+		if !found {
+			return errorResult("No packets.yaml devfile found in " + dir)
+		}
+		df, err := devfile.ParseFile(path)
+		if err != nil {
+			return errorResult("Devfile validation failed for " + path + ": " + err.Error())
+		}
+		return textResult(fmt.Sprintf("✓ Valid devfile at %s: %s (services: %d, ports: %d)", path, df.Name, len(df.Services), len(df.Ports)))
 
 	default:
 		return errorResult(fmt.Sprintf("Unknown tool: %s", params.Name))
