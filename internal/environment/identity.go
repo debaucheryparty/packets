@@ -32,7 +32,7 @@ func (s EnvironmentSpec) Identity() EnvironmentID {
 	}
 	sort.Strings(versionKeys)
 	for _, k := range versionKeys {
-		b.WriteString(fmt.Sprintf("%s=%s;", k, s.Versions[k]))
+		fmt.Fprintf(&b, "%s=%s;", k, s.Versions[k])
 	}
 
 	h := sha256.Sum256([]byte(b.String()))

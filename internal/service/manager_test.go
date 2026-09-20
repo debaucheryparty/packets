@@ -9,7 +9,7 @@ import (
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
 
-func setupTestStore(t *testing.T) (*storage.JobStore, string) {
+func setupTestStore(t *testing.T) *storage.JobStore {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
@@ -18,12 +18,12 @@ func setupTestStore(t *testing.T) (*storage.JobStore, string) {
 		t.Fatalf("failed to create job store: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	return store, dir
+	return store
 }
 
 func TestManager_Lifecycle(t *testing.T) {
 	ctx := context.Background()
-	store, _ := setupTestStore(t)
+	store := setupTestStore(t)
 	mgr := NewManager(store, nil)
 
 	subID := "sub-test-1"
@@ -96,7 +96,7 @@ func TestManager_Lifecycle(t *testing.T) {
 
 func TestManager_Validation(t *testing.T) {
 	ctx := context.Background()
-	store, _ := setupTestStore(t)
+	store := setupTestStore(t)
 	mgr := NewManager(store, nil)
 
 	_, err := mgr.Start(ctx, "", apitypes.Service{Name: "postgres"})

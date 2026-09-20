@@ -72,7 +72,7 @@ func newServiceListCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-			fmt.Fprintln(w, "NAME\tSTATUS\tDRIVER\tIMAGE\tPORTS\tCONTAINER_ID")
+			_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tDRIVER\tIMAGE\tPORTS\tCONTAINER_ID")
 			for _, s := range resp.Services {
 				ports := strings.Join(s.Ports, ", ")
 				if ports == "" {
@@ -82,7 +82,7 @@ func newServiceListCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 				if cid == "" {
 					cid = "-"
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 					s.Name, s.Status, s.Driver, s.Image, ports, cid)
 			}
 			return w.Flush()

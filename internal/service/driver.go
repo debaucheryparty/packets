@@ -57,7 +57,7 @@ func (d *ProcessDriver) Start(ctx context.Context, svc apitypes.Service) (string
 	}
 
 	if len(cmdArgs) == 0 {
-		buf.WriteString(fmt.Sprintf("[%s] Service %s started\n", time.Now().UTC().Format(time.RFC3339), svc.Name))
+		fmt.Fprintf(buf, "[%s] Service %s started\n", time.Now().UTC().Format(time.RFC3339), svc.Name)
 		d.processes[instanceID] = &processInstance{
 			logs: buf,
 		}
@@ -79,14 +79,14 @@ func (d *ProcessDriver) Start(ctx context.Context, svc apitypes.Service) (string
 
 	if err := cmd.Start(); err != nil {
 		cancel()
-		buf.WriteString(fmt.Sprintf("[%s] Start error: %v\n", time.Now().UTC().Format(time.RFC3339), err))
+		fmt.Fprintf(buf, "[%s] Start error: %v\n", time.Now().UTC().Format(time.RFC3339), err)
 		d.processes[instanceID] = &processInstance{
 			logs: buf,
 		}
 		return instanceID, nil
 	}
 
-	buf.WriteString(fmt.Sprintf("[%s] Process started with PID %d\n", time.Now().UTC().Format(time.RFC3339), cmd.Process.Pid))
+	fmt.Fprintf(buf, "[%s] Process started with PID %d\n", time.Now().UTC().Format(time.RFC3339), cmd.Process.Pid)
 
 	d.processes[instanceID] = &processInstance{
 		cmd:    cmd,
@@ -119,7 +119,7 @@ func (d *ProcessDriver) Stop(ctx context.Context, containerID string) error {
 
 	proc.mu.Lock()
 	if proc.logs != nil {
-		proc.logs.WriteString(fmt.Sprintf("[%s] Process stopped\n", time.Now().UTC().Format(time.RFC3339)))
+		fmt.Fprintf(proc.logs, "[%s] Process stopped\n", time.Now().UTC().Format(time.RFC3339))
 	}
 	proc.mu.Unlock()
 

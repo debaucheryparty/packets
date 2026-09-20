@@ -267,9 +267,9 @@ func newTransactionListCommand(cfg *config.Config, _ *slog.Logger) *cobra.Comman
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-			fmt.Fprintln(w, "ID\tPROJECT\tSTATUS\tBASE_SNAPSHOT\tCREATED")
+			_, _ = fmt.Fprintln(w, "ID\tPROJECT\tSTATUS\tBASE_SNAPSHOT\tCREATED")
 			for _, tx := range resp.Transactions {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 					tx.Id, tx.ProjectId, tx.Status, tx.BaseSnapshotRef, tx.CreatedAt)
 			}
 			return w.Flush()
