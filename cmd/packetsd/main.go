@@ -17,6 +17,7 @@ import (
 	"github.com/debaucheryparty/packets/internal/policy"
 	"github.com/debaucheryparty/packets/internal/provider"
 	"github.com/debaucheryparty/packets/internal/scheduler"
+	"github.com/debaucheryparty/packets/internal/service"
 	"github.com/debaucheryparty/packets/internal/storage"
 	"github.com/debaucheryparty/packets/internal/subspace"
 	"github.com/debaucheryparty/packets/internal/toolchain"
@@ -187,6 +188,9 @@ func main() {
 
 	subspaceMgr := subspace.NewManager(store, logger, filepath.Join(cfg.WorkspaceTempDir, "packets-subspaces"))
 	pb.RegisterSubspaceServiceServer(grpcServer, subspace.NewServer(subspaceMgr))
+
+	serviceMgr := service.NewManager(store, logger)
+	pb.RegisterRemoteServiceServiceServer(grpcServer, service.NewServer(serviceMgr))
 
 	listener, err := net.Listen("tcp", cfg.SchedulerAddr())
 	if err != nil {

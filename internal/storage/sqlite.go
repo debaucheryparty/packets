@@ -31,10 +31,14 @@ var migration004 string
 //go:embed migrations/005_subspaces.sql
 var migration005 string
 
+//go:embed migrations/006_services.sql
+var migration006 string
+
 var (
 	ErrJobNotFound      = errors.New("job not found")
 	ErrCacheMiss        = errors.New("cache miss")
 	ErrSubspaceNotFound = errors.New("subspace not found")
+	ErrServiceNotFound  = errors.New("service not found")
 )
 
 type JobStore struct {
@@ -673,3 +677,125 @@ func (s *JobStore) DeleteSubspace(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+func (s *JobStore) CreateService(ctx context.Context, svc apitypes.Service) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	cmdJSON, _ := json.Marshal(svc.Command)
+	if svc.Command == nil {
+		cmdJSON = []byte("[]")
+	}
+	envJSON, _ := json.Marshal(svc.Environment)
+	if svc.Environment == nil {
+		envJSON = []byte("{}")
+	}
+	portsJSON, _ := json.Marshal(svc.Ports)
+	if svc.Ports == nil {
+		portsJSON = []byte("[]")
+	}
+
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO subspace_services (id, subspace_id, name, image, command, environment, ports, status, driver, container_id, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		svc.ID, svc.SubspaceID, svc.Name, svc.Image, string(cmdJSON), string(envJSON), string(portsJSON),
+		string(svc.Status), svc.Driver, svc.ContainerID, svc.CreatedAt.UTC(), svc.UpdatedAt.UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("CreateService %s: %w", svc.ID, err)
+	}
+	return nil
+}
+
+func (s *JobStore) GetService(ctx context.Context, subspaceID, nameOrID string) (apitypes.Service, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, subspace_id, name, image, command, environment, ports, status, driver, container_id, created_at, updated_at
+		 FROM subspace_services WHERE subspace_id = ? AND (id = ? OR name = ?)`,
+		subspaceID, nameOrID, nameOrID,
+	)
+	var svc apitypes.Service
+	var cmdJSON, envJSON, portsJSON, statusStr string
+	err := row.Scan(
+		&svc.ID, &svc.SubspaceID, &svc.Name, &svc.Image, &cmdJSON, &envJSON, &portsJSON,
+		&statusStr, &svc.Driver, &svc.ContainerID, &svc.CreatedAt, &svc.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return apitypes.Service{}, ErrServiceNotFound
+	}
+	if err != nil {
+		return apitypes.Service{}, fmt.Errorf("GetService %s: %w", nameOrID, err)
+	}
+	svc.Status = apitypes.ServiceStatus(statusStr)
+	_ = json.Unmarshal([]byte(cmdJSON), &svc.Command)
+	_ = json.Unmarshal([]byte(envJSON), &svc.Environment)
+	_ = json.Unmarshal([]byte(portsJSON), &svc.Ports)
+	return svc, nil
+}
+
+func (s *JobStore) ListServices(ctx context.Context, subspaceID string) ([]apitypes.Service, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, subspace_id, name, image, command, environment, ports, status, driver, container_id, created_at, updated_at
+		 FROM subspace_services WHERE subspace_id = ? ORDER BY created_at ASC`,
+		subspaceID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ListServices %s: %w", subspaceID, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []apitypes.Service
+	for rows.Next() {
+		var svc apitypes.Service
+		var cmdJSON, envJSON, portsJSON, statusStr string
+		if err := rows.Scan(
+			&svc.ID, &svc.SubspaceID, &svc.Name, &svc.Image, &cmdJSON, &envJSON, &portsJSON,
+			&statusStr, &svc.Driver, &svc.ContainerID, &svc.CreatedAt, &svc.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("ListServices scan: %w", err)
+		}
+		svc.Status = apitypes.ServiceStatus(statusStr)
+		_ = json.Unmarshal([]byte(cmdJSON), &svc.Command)
+		_ = json.Unmarshal([]byte(envJSON), &svc.Environment)
+		_ = json.Unmarshal([]byte(portsJSON), &svc.Ports)
+		results = append(results, svc)
+	}
+	return results, rows.Err()
+}
+
+func (s *JobStore) UpdateServiceStatus(ctx context.Context, id string, status apitypes.ServiceStatus, containerID string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	now := time.Now().UTC()
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE subspace_services SET status = ?, container_id = ?, updated_at = ? WHERE id = ?`,
+		string(status), containerID, now, id,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateServiceStatus %s: %w", id, err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrServiceNotFound
+	}
+	return nil
+}
+
+func (s *JobStore) DeleteService(ctx context.Context, subspaceID, nameOrID string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM subspace_services WHERE subspace_id = ? AND (id = ? OR name = ?)`,
+		subspaceID, nameOrID, nameOrID,
+	)
+	if err != nil {
+		return fmt.Errorf("DeleteService %s: %w", nameOrID, err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrServiceNotFound
+	}
+	return nil
+}
+

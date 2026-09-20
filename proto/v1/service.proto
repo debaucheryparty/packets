@@ -1,0 +1,69 @@
+syntax = "proto3";
+package packets.v1;
+
+option go_package = "github.com/debaucheryparty/packets/proto/v1";
+
+service RemoteServiceService {
+  rpc StartService(StartServiceRequest) returns (ServiceResponse);
+  rpc StopService(StopServiceRequest) returns (ServiceResponse);
+  rpc RestartService(RestartServiceRequest) returns (ServiceResponse);
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  rpc GetServiceLogs(GetServiceLogsRequest) returns (GetServiceLogsResponse);
+}
+
+message ServiceRecord {
+  string id = 1;
+  string subspace_id = 2;
+  string name = 3;
+  string image = 4;
+  repeated string command = 5;
+  map<string, string> environment = 6;
+  repeated string ports = 7;
+  string status = 8;
+  string driver = 9;
+  string container_id = 10;
+  string created_at = 11;
+  string updated_at = 12;
+}
+
+message StartServiceRequest {
+  string subspace_id = 1;
+  string name = 2;
+  string image = 3;
+  repeated string command = 4;
+  map<string, string> environment = 5;
+  repeated string ports = 6;
+  string driver = 7;
+}
+
+message StopServiceRequest {
+  string subspace_id = 1;
+  string name_or_id = 2;
+}
+
+message RestartServiceRequest {
+  string subspace_id = 1;
+  string name_or_id = 2;
+}
+
+message ListServicesRequest {
+  string subspace_id = 1;
+}
+
+message ListServicesResponse {
+  repeated ServiceRecord services = 1;
+}
+
+message GetServiceLogsRequest {
+  string subspace_id = 1;
+  string name_or_id = 2;
+  int32 lines = 3;
+}
+
+message GetServiceLogsResponse {
+  string logs = 1;
+}
+
+message ServiceResponse {
+  ServiceRecord service = 1;
+}
