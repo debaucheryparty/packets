@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/debaucheryparty/packets/internal/storage"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
@@ -187,5 +188,42 @@ func TestManager_SleepAndWake(t *testing.T) {
 
 	if _, err := mgr.Wake(ctx, sub.ID); err == nil {
 		t.Errorf("expected error waking ready subspace, got nil")
+	}
+}
+
+func TestManager_AutoSleepIdle(t *testing.T) {
+	mgr := setupTestManager(t)
+	ctx := context.Background()
+
+	sub, err := mgr.Create(ctx, CreateOptions{ProjectID: "p-idle", OwnerID: "frank"})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	slept, err := mgr.AutoSleepIdle(ctx, 1*time.Hour)
+	if err != nil {
+		t.Fatalf("AutoSleepIdle failed: %v", err)
+	}
+	if len(slept) != 0 {
+		t.Errorf("expected 0 subspaces slept when under threshold, got %d", len(slept))
+	}
+
+	slept, err = mgr.AutoSleepIdle(ctx, 0)
+	if err != nil {
+		t.Fatalf("AutoSleepIdle with 0 duration failed: %v", err)
+	}
+	if len(slept) != 1 || slept[0].ID != sub.ID {
+		t.Fatalf("expected subspace %s to be slept, got %+v", sub.ID, slept)
+	}
+	if slept[0].State != apitypes.SubspaceSleeping {
+		t.Errorf("expected state sleeping, got %s", slept[0].State)
+	}
+
+	sleptAgain, err := mgr.AutoSleepIdle(ctx, 0)
+	if err != nil {
+		t.Fatalf("AutoSleepIdle again failed: %v", err)
+	}
+	if len(sleptAgain) != 0 {
+		t.Errorf("expected 0 already sleeping subspaces to be slept again, got %d", len(sleptAgain))
 	}
 }

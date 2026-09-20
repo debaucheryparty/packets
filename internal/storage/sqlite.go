@@ -682,6 +682,33 @@ func (s *JobStore) DeleteSubspace(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *JobStore) HasActiveSubspaceWorkload(ctx context.Context, subspaceID string) (bool, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	var activeJobCount int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM jobs WHERE subspace_id = ? AND state IN ('running', 'queued')`,
+		subspaceID,
+	).Scan(&activeJobCount)
+	if err != nil {
+		return false, fmt.Errorf("check active jobs: %w", err)
+	}
+	if activeJobCount > 0 {
+		return true, nil
+	}
+
+	var activeServiceCount int
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM subspace_services WHERE subspace_id = ? AND status IN ('running', 'starting')`,
+		subspaceID,
+	).Scan(&activeServiceCount)
+	if err != nil {
+		return false, fmt.Errorf("check active services: %w", err)
+	}
+	return activeServiceCount > 0, nil
+}
+
 func (s *JobStore) CreateService(ctx context.Context, svc apitypes.Service) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()

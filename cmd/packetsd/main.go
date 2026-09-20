@@ -189,6 +189,7 @@ func main() {
 
 	subspaceMgr := subspace.NewManager(store, logger, filepath.Join(cfg.WorkspaceTempDir, "packets-subspaces"))
 	pb.RegisterSubspaceServiceServer(grpcServer, subspace.NewServer(subspaceMgr))
+	go subspaceMgr.StartIdleReaper(ctx, 1*time.Minute, 30*time.Minute)
 
 	serviceMgr := service.NewManager(store, logger)
 	pb.RegisterRemoteServiceServiceServer(grpcServer, service.NewServer(serviceMgr))

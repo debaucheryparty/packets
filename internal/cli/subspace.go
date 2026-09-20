@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/project"
@@ -182,10 +183,12 @@ func newSubspaceStatusCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command
 }
 
 func newSubspaceSleepCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
-	return &cobra.Command{
-		Use:   "sleep <subspace-id>",
-		Short: "Put a remote Subspace to sleep to reclaim resources",
-		Args:  cobra.ExactArgs(1),
+	var idleFlag string
+
+	cmd := &cobra.Command{
+		Use:   "sleep [subspace-id]",
+		Short: "Put a remote Subspace or idle Subspaces to sleep to reclaim resources",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			conn, err := DialScheduler(ctx, cfg)
@@ -195,15 +198,58 @@ func newSubspaceSleepCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command 
 			defer func() { _ = conn.Close() }()
 
 			client := pb.NewSubspaceServiceClient(conn)
-			resp, err := client.SleepSubspace(ctx, &pb.SleepSubspaceRequest{Id: args[0]})
-			if err != nil {
-				return fmt.Errorf("sleep subspace %s: %w", args[0], err)
+
+			if len(args) == 1 {
+				resp, err := client.SleepSubspace(ctx, &pb.SleepSubspaceRequest{Id: args[0]})
+				if err != nil {
+					return fmt.Errorf("sleep subspace %s: %w", args[0], err)
+				}
+				fmt.Printf("✓ Subspace %s is now sleeping\n", resp.Subspace.Id)
+				return nil
 			}
 
-			fmt.Printf("✓ Subspace %s is now sleeping\n", resp.Subspace.Id)
+			if idleFlag == "" {
+				return fmt.Errorf("specify a subspace ID or use --idle <duration> (e.g. --idle 30m)")
+			}
+
+			d, err := time.ParseDuration(idleFlag)
+			if err != nil {
+				return fmt.Errorf("invalid idle duration %q: %w", idleFlag, err)
+			}
+
+			listResp, err := client.ListSubspaces(ctx, &pb.ListSubspacesRequest{})
+			if err != nil {
+				return fmt.Errorf("list subspaces: %w", err)
+			}
+
+			now := time.Now().UTC()
+			var sleptCount int
+			for _, s := range listResp.Subspaces {
+				if s.State != "ready" {
+					continue
+				}
+				lastUsed, parseErr := time.Parse(time.RFC3339, s.LastUsedAt)
+				if parseErr != nil {
+					continue
+				}
+				if now.Sub(lastUsed) >= d {
+					resp, err := client.SleepSubspace(ctx, &pb.SleepSubspaceRequest{Id: s.Id})
+					if err == nil {
+						fmt.Printf("✓ Subspace %s is now sleeping (idle for %s)\n", resp.Subspace.Id, now.Sub(lastUsed).Round(time.Second))
+						sleptCount++
+					}
+				}
+			}
+
+			if sleptCount == 0 {
+				fmt.Println("No idle subspaces found matching threshold.")
+			}
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&idleFlag, "idle", "", "Put all subspaces idle for longer than duration to sleep (e.g. 15m, 1h)")
+	return cmd
 }
 
 func newSubspaceWakeCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {

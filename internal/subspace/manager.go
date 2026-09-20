@@ -236,3 +236,60 @@ func generateSubspaceID() string {
 	_, _ = rand.Read(b)
 	return "sub-" + hex.EncodeToString(b)
 }
+
+type WorkloadChecker interface {
+	HasActiveSubspaceWorkload(ctx context.Context, subspaceID string) (bool, error)
+}
+
+func (m *Manager) AutoSleepIdle(ctx context.Context, idleTimeout time.Duration) ([]apitypes.Subspace, error) {
+	subs, err := m.store.ListSubspaces(ctx, "", "")
+	if err != nil {
+		return nil, fmt.Errorf("list subspaces for idle check: %w", err)
+	}
+
+	checker, hasChecker := m.store.(WorkloadChecker)
+	now := time.Now().UTC()
+	var slept []apitypes.Subspace
+
+	for _, sub := range subs {
+		if sub.State != apitypes.SubspaceReady {
+			continue
+		}
+		if now.Sub(sub.LastUsedAt) < idleTimeout {
+			continue
+		}
+
+		if hasChecker {
+			active, err := checker.HasActiveSubspaceWorkload(ctx, sub.ID)
+			if err == nil && active {
+				continue
+			}
+		}
+
+		updated, err := m.Sleep(ctx, sub.ID)
+		if err != nil {
+			m.logger.WarnContext(ctx, "failed to auto-sleep idle subspace",
+				slog.String("id", sub.ID),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		slept = append(slept, updated)
+	}
+
+	return slept, nil
+}
+
+func (m *Manager) StartIdleReaper(ctx context.Context, checkInterval, idleTimeout time.Duration) {
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_, _ = m.AutoSleepIdle(ctx, idleTimeout)
+		}
+	}
+}
