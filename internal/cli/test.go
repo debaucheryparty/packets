@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/debaucheryparty/packets/internal/toolchain"
 	"github.com/debaucheryparty/packets/internal/workspace"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/devfile"
 	pb "github.com/debaucheryparty/packets/proto/v1"
 	"github.com/spf13/cobra"
 )
@@ -63,8 +65,8 @@ Streams test execution logs and reports exit code.`,
 			}
 
 			if len(cmdArgs) == 0 {
-				if len(def.DefaultArgs) > 0 {
-					cmdArgs = []string{"test"}
+				if df, err := devfile.Load(absDir); err == nil && df != nil && df.Test.Command != "" {
+					cmdArgs = append(strings.Fields(df.Test.Command), df.Test.Args...)
 				} else {
 					cmdArgs = []string{"test"}
 				}

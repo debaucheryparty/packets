@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/debaucheryparty/packets/internal/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/debaucheryparty/packets/internal/toolchain"
 	"github.com/debaucheryparty/packets/internal/workspace"
 	"github.com/debaucheryparty/packets/pkg/apitypes"
+	"github.com/debaucheryparty/packets/pkg/devfile"
 	pb "github.com/debaucheryparty/packets/proto/v1"
 	"github.com/spf13/cobra"
 )
@@ -124,7 +126,9 @@ func NewBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		}
 
 		if len(args) == 0 {
-			if def.LocalCommand != "" {
+			if df, err := devfile.Load(pwd); err == nil && df != nil && df.Build.Command != "" {
+				args = append(strings.Fields(df.Build.Command), df.Build.Args...)
+			} else if def.LocalCommand != "" {
 				args = append([]string{def.LocalCommand}, def.DefaultArgs...)
 			} else {
 				args = def.DefaultArgs

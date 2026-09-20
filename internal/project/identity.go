@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/debaucheryparty/packets/pkg/devfile"
 )
 
 type ComponentConfig struct {
@@ -66,6 +68,10 @@ func ResolveProjectID(dir string) string {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		absDir = dir
+	}
+
+	if df, err := devfile.Load(absDir); err == nil && df != nil && df.Name != "" {
+		return sanitizeID(df.Name)
 	}
 
 	cfgFile := filepath.Join(absDir, ".packets", "project.json")
