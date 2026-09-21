@@ -41,10 +41,10 @@ func NewAndroidCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		newAndroidConnectCommand(cfg, logger),
 		newAndroidSetupCommand(cfg, logger),
 		newAndroidScreenshotCommand(cfg, logger),
-		newAndroidBundleCommand(cfg, logger),
-		newAndroidKeystoreCommand(cfg, logger),
-		newAndroidSignCommand(cfg, logger),
-		newAndroidVerifyCommand(cfg, logger),
+		newAndroidBundleCommand(),
+		newAndroidKeystoreCommand(),
+		newAndroidSignCommand(),
+		newAndroidVerifyCommand(),
 	)
 	return cmd
 }
@@ -681,7 +681,7 @@ func newAndroidScreenshotCommand(cfg *config.Config, logger *slog.Logger) *cobra
 	return cmd
 }
 
-func newAndroidBundleCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newAndroidBundleCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bundle",
 		Short: "Android App Bundle (.aab) and bundletool utilities",
@@ -1675,7 +1675,7 @@ func validateSubspaceTarget(ctx context.Context, conn *grpc.ClientConn, subspace
 	return nil
 }
 
-func newAndroidKeystoreCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newAndroidKeystoreCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "keystore",
 		Short: "Android keystore provisioning and management",
@@ -1749,7 +1749,7 @@ func newAndroidKeystoreCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 	return cmd
 }
 
-func newAndroidSignCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newAndroidSignCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sign <file.apk|file.aab>",
 		Short: "Sign an Android APK or App Bundle (.aab)",
@@ -1808,7 +1808,7 @@ func newAndroidSignCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comma
 	return cmd
 }
 
-func newAndroidVerifyCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+func newAndroidVerifyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "verify <file.apk|file.aab>",
 		Short: "Verify the digital signature of an APK or App Bundle",
