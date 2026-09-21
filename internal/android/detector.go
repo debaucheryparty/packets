@@ -91,3 +91,12 @@ func FindAPK(dir, variant string) (string, error) {
 	}
 	return matches[0], nil
 }
+
+func FindAAB(dir, variant string) (string, error) {
+	pattern := fmt.Sprintf("%s/app/build/outputs/bundle/%s/*.aab", dir, variant)
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return "", fmt.Errorf("no AAB found at %s", pattern)
+	}
+	return matches[0], nil
+}
