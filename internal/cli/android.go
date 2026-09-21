@@ -1,4 +1,4 @@
-package cli
+﻿package cli
 
 import (
 	"context"
@@ -41,6 +41,7 @@ func NewAndroidCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		newAndroidConnectCommand(cfg, logger),
 		newAndroidSetupCommand(cfg, logger),
 		newAndroidScreenshotCommand(cfg, logger),
+		newAndroidBundleCommand(cfg, logger),
 	)
 	return cmd
 }
@@ -73,10 +74,17 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 			forceFlag, _ := cmd.Flags().GetBool("force")
 			benchmarkFlag, _ := cmd.Flags().GetBool("benchmark")
 			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+			bundleFlag, _ := cmd.Flags().GetBool("bundle")
+			aabFlag, _ := cmd.Flags().GetBool("aab")
+			isBundle := bundleFlag || aabFlag
 
 			totalStart := time.Now()
 			gradleTask := variantToTask(variant)
 			artifactGlob := variantToArtifact(variant)
+			if isBundle {
+				gradleTask = variantToBundleTask(variant)
+				artifactGlob = variantToBundleArtifact(variant)
+			}
 
 			conn, err := DialScheduler(ctx, cfg)
 			if err != nil {
@@ -121,7 +129,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 
 			fmt.Printf("Running Gradle (%s)...\n", gradleTask)
 			if resp.CacheHit {
-				fmt.Println("Cache hit (reusing existing APK)")
+				fmt.Println("Cache hit (reusing existing artifact)")
 			}
 
 			if waitFlag {
@@ -133,11 +141,10 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 				buildDur := time.Since(buildStart)
 				totalDur := time.Since(totalStart)
 				if benchmarkFlag {
-					fmt.Println("\n=== Benchmark Report ===")
+					fmt.Println("\nBenchmark Report:")
 					fmt.Printf("Workspace Sync:  %s\n", uploadDur.Round(time.Millisecond))
 					fmt.Printf("Remote Gradle:   %s\n", buildDur.Round(time.Millisecond))
 					fmt.Printf("Total Duration:  %s\n", totalDur.Round(time.Millisecond))
-					fmt.Println("========================")
 				}
 				return nil
 			}
@@ -148,7 +155,9 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 		},
 	}
 	cmd.Flags().String("variant", "debug", "Build variant: debug or release")
-	cmd.Flags().Bool("wait", true, "Wait for build and download APK")
+	cmd.Flags().Bool("wait", true, "Wait for build and download artifact")
+	cmd.Flags().Bool("bundle", false, "Build Android App Bundle (.aab) instead of APK")
+	cmd.Flags().Bool("aab", false, "Alias for --bundle")
 	cmd.Flags().String("provider", "", "Named provider from config")
 	cmd.Flags().Bool("force", false, "Re-upload entire workspace")
 	cmd.Flags().Bool("benchmark", false, "Measure build timing (Phase 9)")
@@ -168,6 +177,20 @@ func variantToArtifact(v string) string {
 		return "app/build/outputs/apk/release/*.apk"
 	}
 	return "app/build/outputs/apk/debug/*.apk"
+}
+
+func variantToBundleTask(v string) string {
+	if v == "release" {
+		return "bundleRelease"
+	}
+	return "bundleDebug"
+}
+
+func variantToBundleArtifact(v string) string {
+	if v == "release" {
+		return "app/build/outputs/bundle/release/*.aab"
+	}
+	return "app/build/outputs/bundle/debug/*.aab"
 }
 
 func execRemoteCommand(ctx context.Context, cfg *config.Config, args ...string) ([]string, error) {
@@ -389,8 +412,12 @@ func newAndroidRunCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 			pkg, _ := cmd.Flags().GetString("package")
 			activity, _ := cmd.Flags().GetString("activity")
 			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+			bundleFlag, _ := cmd.Flags().GetBool("bundle")
 
 			buildArgs := []string{dir, "--wait=true"}
+			if bundleFlag {
+				buildArgs = append(buildArgs, "--bundle")
+			}
 			if subspaceFlag != "" {
 				buildArgs = append(buildArgs, "--subspace="+subspaceFlag)
 			}
@@ -401,16 +428,31 @@ func newAndroidRunCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 				return fmt.Errorf("android build: %w", err)
 			}
 
-			apk, err := findAPK(dir, "debug")
-			if err != nil {
-				return fmt.Errorf("find APK: %w", err)
-			}
-
 			adb := android.NewExecADBClient()
-
-			fmt.Printf("\nInstalling %s...\n", apk)
-			if err := adb.Install(ctx, serial, apk); err != nil {
-				return fmt.Errorf("install: %w", err)
+			if bundleFlag {
+				aab, err := android.FindAAB(dir, "debug")
+				if err != nil {
+					return fmt.Errorf("find AAB: %w", err)
+				}
+				tempAPKs := filepath.Join(os.TempDir(), fmt.Sprintf("bundle-%d.apks", time.Now().UnixNano()))
+				defer func() { _ = os.Remove(tempAPKs) }()
+				bt := android.NewExecBundletool()
+				fmt.Printf("\nBuilding and installing APKs from %s...\n", aab)
+				if err := bt.BuildAPKs(ctx, aab, tempAPKs, false, serial); err != nil {
+					return fmt.Errorf("bundletool build-apks: %w", err)
+				}
+				if err := bt.InstallAPKs(ctx, tempAPKs, serial); err != nil {
+					return fmt.Errorf("bundletool install-apks: %w", err)
+				}
+			} else {
+				apk, err := findAPK(dir, "debug")
+				if err != nil {
+					return fmt.Errorf("find APK: %w", err)
+				}
+				fmt.Printf("\nInstalling %s...\n", apk)
+				if err := adb.Install(ctx, serial, apk); err != nil {
+					return fmt.Errorf("install: %w", err)
+				}
 			}
 			fmt.Println("Installed")
 
@@ -433,6 +475,7 @@ func newAndroidRunCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 	cmd.Flags().String("package", "", "Android package name (e.g. com.example.app)")
 	cmd.Flags().String("activity", ".MainActivity", "Activity to launch")
 	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
+	cmd.Flags().Bool("bundle", false, "Build and deploy via Android App Bundle (.aab)")
 	return cmd
 }
 
@@ -595,6 +638,94 @@ func newAndroidScreenshotCommand(cfg *config.Config, logger *slog.Logger) *cobra
 		},
 	}
 	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
+	return cmd
+}
+
+func newAndroidBundleCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "bundle",
+		Short: "Android App Bundle (.aab) and bundletool utilities",
+	}
+
+	buildApksCmd := &cobra.Command{
+		Use:   "build-apks <app.aab>",
+		Short: "Build an .apks package from an Android App Bundle",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			aabPath := args[0]
+			outPath, _ := cmd.Flags().GetString("output")
+			if outPath == "" {
+				ext := filepath.Ext(aabPath)
+				outPath = strings.TrimSuffix(aabPath, ext) + ".apks"
+			}
+			universal, _ := cmd.Flags().GetBool("universal")
+			serial, _ := cmd.Flags().GetString("serial")
+
+			fmt.Printf("Building APKs from %s...\n", aabPath)
+			bt := android.NewExecBundletool()
+			if err := bt.BuildAPKs(ctx, aabPath, outPath, universal, serial); err != nil {
+				return err
+			}
+			fmt.Printf("APKs package generated at %s\n", outPath)
+			return nil
+		},
+	}
+	buildApksCmd.Flags().String("output", "", "Output .apks destination path")
+	buildApksCmd.Flags().Bool("universal", false, "Build a standalone universal APK inside the package")
+	buildApksCmd.Flags().String("serial", "", "Target device serial to optimize APK splits")
+
+	installCmd := &cobra.Command{
+		Use:   "install <file.apks|file.aab>",
+		Short: "Deploy an .apks package or .aab directly to a connected device",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			input := args[0]
+			serial, _ := cmd.Flags().GetString("serial")
+			bt := android.NewExecBundletool()
+
+			targetAPKs := input
+			if strings.HasSuffix(strings.ToLower(input), ".aab") {
+				tempAPKs := filepath.Join(os.TempDir(), fmt.Sprintf("bundle-%d.apks", time.Now().UnixNano()))
+				defer func() { _ = os.Remove(tempAPKs) }()
+				fmt.Printf("Generating APKs for device from %s...\n", input)
+				if err := bt.BuildAPKs(ctx, input, tempAPKs, false, serial); err != nil {
+					return fmt.Errorf("build apks: %w", err)
+				}
+				targetAPKs = tempAPKs
+			}
+
+			fmt.Printf("Installing %s...\n", targetAPKs)
+			if err := bt.InstallAPKs(ctx, targetAPKs, serial); err != nil {
+				return fmt.Errorf("install apks: %w", err)
+			}
+			fmt.Println("Installed successfully")
+			return nil
+		},
+	}
+	installCmd.Flags().String("serial", "", "Target device serial")
+
+	extractCmd := &cobra.Command{
+		Use:   "extract <file.apks> [out.apk]",
+		Short: "Extract the universal APK from an .apks package archive",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			apksPath := args[0]
+			outPath := "universal.apk"
+			if len(args) > 1 {
+				outPath = args[1]
+			}
+			fmt.Printf("Extracting APK from %s...\n", apksPath)
+			if err := android.ExtractUniversalAPK(apksPath, outPath); err != nil {
+				return err
+			}
+			fmt.Printf("Extracted APK to %s\n", outPath)
+			return nil
+		},
+	}
+
+	cmd.AddCommand(buildApksCmd, installCmd, extractCmd)
 	return cmd
 }
 
