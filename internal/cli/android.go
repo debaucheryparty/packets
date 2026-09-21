@@ -942,6 +942,7 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 				dir = args[0]
 			}
 
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
 			avd, _ := cmd.Flags().GetString("avd")
 			serial, _ := cmd.Flags().GetString("serial")
 			pkg, _ := cmd.Flags().GetString("package")
@@ -963,8 +964,74 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 			}
 			fmt.Printf("Android project detected (confidence: %s)\n", proj.Confidence())
 
+			conn, err := DialScheduler(ctx, cfg)
+			if err != nil {
+				return fmt.Errorf("connect to packetsd: %w", err)
+			}
+			defer func() { _ = conn.Close() }()
+
+			if subspaceFlag != "" {
+				if err := validateSubspaceTarget(ctx, conn, subspaceFlag, logger); err != nil {
+					return err
+				}
+			}
+
+			if adbHost == "" {
+				if cfg.OracleVMTailscaleHost != "" {
+					h := cfg.OracleVMTailscaleHost
+					if idx := strings.Index(h, ":"); idx != -1 {
+						h = h[:idx]
+					}
+					adbHost = h
+				}
+			}
+			if adbHost == "" {
+				prof, _ := config.LoadProfile()
+				if prof != nil && prof.ServerAddr != "" {
+					h := prof.ServerAddr
+					if idx := strings.Index(h, ":"); idx != -1 {
+						h = h[:idx]
+					}
+					adbHost = h
+				}
+			}
+			if adbHost == "" {
+				if envHost := os.Getenv("ORACLE_VM_TAILSCALE_HOSTNAME"); envHost != "" {
+					adbHost = envHost
+				} else if serverAddr := os.Getenv("PACKETS_SERVER_ADDR"); serverAddr != "" {
+					h := serverAddr
+					if idx := strings.Index(h, ":"); idx != -1 {
+						h = h[:idx]
+					}
+					adbHost = h
+				}
+			}
+
 			adbClient := android.NewExecADBClient()
 			emulatorMgr := android.NewAVDEmulatorManager(logger, adbClient)
+
+			if adbHost != "" && adbHost != "127.0.0.1" && adbHost != "localhost" {
+				target := fmt.Sprintf("%s:%d", adbHost, 5555)
+				adbBin := android.ResolveADBPath()
+				out, err := exec.CommandContext(ctx, adbBin, "connect", target).CombinedOutput()
+				if err == nil && !strings.Contains(string(out), "cannot connect") && !strings.Contains(string(out), "failed") {
+					if serial == "" {
+						serial = target
+					}
+				}
+			}
+
+			if serial == "" {
+				devices, err := adbClient.Devices(ctx)
+				if err == nil && len(devices) > 0 {
+					for _, d := range devices {
+						if d.State == "device" {
+							serial = d.Serial
+							break
+						}
+					}
+				}
+			}
 
 			if serial == "" {
 				fmt.Printf("\nStarting emulator %s...\n", avd)
@@ -976,7 +1043,7 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 					NoSnapshotLoad: noSnapshotLoad,
 				})
 				if err != nil {
-					return fmt.Errorf("emulator start: %w\nSuggestion: run `packets android node check` to verify KVM and SDK are available", err)
+					return fmt.Errorf("emulator start: %w\nSuggestion: run `packets android node-check` to verify KVM and SDK are available", err)
 				}
 				fmt.Printf("Emulator started (%s)\n", serial)
 
@@ -987,10 +1054,11 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 				fmt.Println("Boot complete")
 			}
 
-			if err := runBuildInstallLaunch(ctx, cfg, logger, proj.Root, variant, serial, pkg, activity); err != nil {
+			if err := runBuildInstallLaunch(ctx, cfg, logger, proj.Root, variant, serial, pkg, activity, subspaceFlag); err != nil {
 				return err
 			}
-			if !noDisplay && adbHost != "" {
+
+			if !noDisplay {
 				display := android.NewScrcpyDisplayBackend(logger)
 				defMaxSize, defBitrate, defFPS := android.QualityToOpts(android.DisplayQuality(qualityStr))
 				maxSize := defMaxSize
@@ -1006,23 +1074,29 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 					maxFPS = maxFPSFlag
 				}
 
-				fmt.Printf("\nStarting remote display via scrcpy (%s:%d, quality: %s)...\n", adbHost, adbPort, qualityStr)
+				title := "Packets Android"
+				if subspaceFlag != "" {
+					title = fmt.Sprintf("Packets Android - Subspace %s", subspaceFlag)
+				} else if proj.Root != "" {
+					title = fmt.Sprintf("Packets Android - %s", filepath.Base(proj.Root))
+				}
+
+				fmt.Printf("\nStarting live interactive display via scrcpy (quality: %s)...\n", qualityStr)
 				go func() {
 					if err := display.Start(ctx, android.DisplayOpts{
-						ADBHost:    adbHost,
-						ADBPort:    adbPort,
-						Serial:     serial,
-						MaxSizePx:  maxSize,
-						BitrateBps: bitrate,
-						MaxFPS:     maxFPS,
-						Stderr:     os.Stderr,
+						ADBHost:     adbHost,
+						ADBPort:     adbPort,
+						Serial:      serial,
+						WindowTitle: title,
+						MaxSizePx:   maxSize,
+						BitrateBps:  bitrate,
+						MaxFPS:      maxFPS,
+						Stderr:      os.Stderr,
 					}); err != nil && ctx.Err() == nil {
 						logger.Warn("scrcpy exited", slog.String("err", err.Error()))
 					}
 				}()
-				fmt.Println("Remote display connected (scrcpy window should open)")
-			} else if !noDisplay && adbHost == "" {
-				fmt.Println("\nNote: pass --adb-host=<tailscale-ip> to start the remote display.")
+				fmt.Println("Interactive remote display opened (mouse and keyboard input enabled)")
 			}
 
 			go func() {
@@ -1043,7 +1117,7 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 						continue
 					}
 					fmt.Printf("\n%d file(s) changed, rebuilding...\n", len(changes))
-					if err := runBuildInstallLaunch(ctx, cfg, logger, proj.Root, variant, serial, pkg, activity); err != nil {
+					if err := runBuildInstallLaunch(ctx, cfg, logger, proj.Root, variant, serial, pkg, activity, subspaceFlag); err != nil {
 						logger.Error("rebuild failed", slog.String("err", err.Error()))
 						fmt.Println("Rebuild failed. Watching for next change...")
 					}
@@ -1052,6 +1126,7 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 		},
 	}
 
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	cmd.Flags().String("avd", "Pixel_8_API_35", "AVD name to start")
 	cmd.Flags().String("serial", "", "Reuse an already-running emulator serial instead of starting a new one")
 	cmd.Flags().String("package", "", "Android package name (e.g. com.example.app)")
@@ -1060,7 +1135,7 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 	cmd.Flags().String("adb-host", "", "Tailscale IP of the remote node for scrcpy display")
 	cmd.Flags().Int("adb-port", 5037, "ADB server port on the remote node")
 	cmd.Flags().Bool("no-display", false, "Skip starting the scrcpy display window")
-	cmd.Flags().String("quality", "medium", "Display quality preset: low, medium, or high (Section 63)")
+	cmd.Flags().String("quality", "medium", "Display quality preset: low, medium, or high")
 	cmd.Flags().Int("max-size", 0, "Custom display maximum dimension in pixels (overrides quality preset)")
 	cmd.Flags().Int("bitrate", 0, "Custom display video bitrate in bps (overrides quality preset)")
 	cmd.Flags().Int("max-fps", 0, "Custom display maximum FPS (overrides quality preset)")
@@ -1133,13 +1208,19 @@ func runBuildInstallLaunch(
 	ctx context.Context,
 	cfg *config.Config,
 	logger *slog.Logger,
-	projectRoot, variant, serial, pkg, activity string,
+	projectRoot, variant, serial, pkg, activity, subspaceID string,
 ) error {
 	conn, err := DialScheduler(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("connect to packetsd: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
+
+	if subspaceID != "" {
+		if err := validateSubspaceTarget(ctx, conn, subspaceID, logger); err != nil {
+			return err
+		}
+	}
 
 	fmt.Println("Uploading workspace...")
 	snapshotRef, err := workspace.UploadWorkspace(ctx, conn, projectRoot, false)
