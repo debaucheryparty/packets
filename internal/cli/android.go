@@ -437,12 +437,7 @@ func newAndroidRunCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 }
 
 func findAPK(dir, variant string) (string, error) {
-	pattern := fmt.Sprintf("%s/app/build/outputs/apk/%s/*.apk", dir, variant)
-	matches, err := filepath.Glob(pattern)
-	if err != nil || len(matches) == 0 {
-		return "", fmt.Errorf("no APK found at %s", pattern)
-	}
-	return matches[0], nil
+	return android.FindAPK(dir, variant)
 }
 
 func newAndroidShellCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {

@@ -82,3 +82,12 @@ func DetectProject(dir string) (*ProjectInfo, error) {
 
 	return info, nil
 }
+
+func FindAPK(dir, variant string) (string, error) {
+	pattern := fmt.Sprintf("%s/app/build/outputs/apk/%s/*.apk", dir, variant)
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return "", fmt.Errorf("no APK found at %s", pattern)
+	}
+	return matches[0], nil
+}
