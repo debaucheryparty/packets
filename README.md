@@ -1,102 +1,77 @@
-# packets
+# Packets
 
-Remote development execution platform that offloads heavy builds, test matrices, and shell commands from laptops to remote servers, dedicated VPS boxes, or peer workstations.
+Offload heavy builds, tests, and shell commands from a slow laptop to a remote PC or VPS.
 
-[![Release][release-badge]][release-url]
-[![Go Reference][godoc-badge]][godoc-url]
-[![MIT licensed][mit-badge]][mit-url]
+## Description
 
-[release-badge]: https://img.shields.io/github/v/release/debaucheryparty/packets.svg?label=latest
-[release-url]: https://github.com/debaucheryparty/packets/releases
-[actions-badge]: https://img.shields.io/github/v/debaucheryparty/packets/actions/workflows/ci.yml/badge.svg
-[actions-url]: https://github.com/debaucheryparty/packets/actions/workflows/ci.yml
-[godoc-badge]: https://pkg.go.dev/badge/github.com/debaucheryparty/packets.svg
-[godoc-url]: https://pkg.go.dev/github.com/debaucheryparty/packets
-[mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
-[mit-url]: https://github.com/debaucheryparty/packets/blob/main/LICENSE
+I do most of my coding on an older laptop with only 8 GB of RAM. Whenever I tried compiling Android apps with Gradle, building Rust crates, or running test matrices, my whole machine would freeze and lag.
 
-[Documentation](./docs/README.md) |
-[Architecture](./docs/architecture.md) |
-[Subspaces Guide](./docs/subspaces/README.md) |
-[Releases](https://github.com/debaucheryparty/packets/releases)
+I built Packets so my laptop only has to be an editor. All the heavy compilation, container tasks, and testing happen on an old desktop on my home network or a remote VPS.
 
----
+Packets only syncs the specific file chunks you edited, runs the build or tests remotely, streams output live to your terminal, brings the built binaries back to your folder, and keeps caches warm across runs so incremental builds stay fast.
 
-## The Idea
+### Screenshots
 
-> **The developer's machine is the interface. The remote machine performs the heavy compute.**
+**Peer fleet status & queue dashboard**
+![Fleet status](./archive/tui-fleet-status.png)
 
-I built **Packets** out of personal necessity. I work on a 5-year-old laptop with only 8GB of RAM. Whenever I tried doing heavy development (compiling large codebases, running Docker containers, building Android or Rust projects, or running local AI tools), my laptop would lag, freeze, and struggle to keep up.
+**Remote Android emulator session**
+![Remote Android session](./archive/android-remote-session.png)
 
-Upgrading hardware is not always an option, but limited hardware should never stop anyone from building ambitious software. I created Packets so that my laptop can stay fast and responsive as just the editing interface, while all the heavy compilation, container workloads, and testing happen on a remote machine.
+**Artifact download after remote build**
+![Artifact extraction](./archive/artifact-download.png)
 
----
+## Getting Started
 
-## What Packets Does
+### Dependencies
 
-- **Content-Addressable Delta Sync**: Workspaces are split into SHA-256 chunks. Only modified bytes are uploaded, syncing large projects in milliseconds over gRPC.
-- **Persistent Subspaces (`packets subspace`)**: Remote development workspaces that keep compiler daemons (like the Gradle Daemon) and incremental build caches (`target/`, `.gradle/`, `GOCACHE`) warm across commands.
-- **Remote Builds & Tests (`packets build`, `packets test`)**: Automatically detects over 25 language toolchains (Android, Rust, Go, C++, Swift, Python, Node), executes remotely, streams output live, and downloads built artifacts.
-- **Remote Execution & Shell (`packets exec`, `packets subspace shell`)**: Run arbitrary commands or open interactive shells inside the persistent remote workspace.
-- **Peer Worker Clustering (`packets worker join`)**: Turn an idle desktop or secondary laptop into an active compute worker in the cluster.
-- **Model Context Protocol (`packets mcp`)**: Built-in MCP server for AI coding assistants (Claude Desktop, Cursor, Antigravity) with policy-based human approval workflows.
+* Linux, macOS, or Windows
+* Go 1.22 or higher (if building from source)
+* A remote machine, desktop, or VPS reachable over network
 
----
+### Installing
 
-## Installation
-
-### Pre-Compiled Binary
+Install the pre-built binary:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/debaucheryparty/packets/main/scripts/install.sh | bash
 ```
 
-### Build from Source (Go 1.22+)
+Or install directly with Go:
 ```bash
 go install github.com/debaucheryparty/packets/cmd/packets@latest
 ```
 
----
+### Executing program
 
-## Quick Start
-
-### 1. Check Server Connection
+* Set your remote server address:
 ```bash
 export PACKETS_SERVER_ADDR="vps.example.com:50051"
 packets status
 ```
 
-### 2. Build Remotely & Auto-Download Artifacts
+* Run a remote build (auto-detects project type, uploads changes, downloads outputs):
 ```bash
-cd my-project
-
-# Auto-detects toolchain, syncs delta chunks, and downloads outputs
 packets build --wait
 ```
 
-### 3. Create a Persistent Subspace
+* Run tests on the remote machine:
 ```bash
-# Allocate a warm remote workspace on your worker
-packets subspace create --project mobile-app --worker vps-worker
-
-# Run incremental builds inside the Subspace
-packets build --subspace sub-xxxxxx --runner host --wait
-```
-
-### 4. Run Tests Remotely
-```bash
-# Streams test execution output directly to your terminal
 packets test
 ```
 
-### 5. Execute Commands in Remote Workspace
+* Keep build caches warm between runs with a persistent subspace:
 ```bash
-packets exec "./gradlew tasks"
-packets exec "cargo check"
+packets subspace create --project my-app --worker vps-worker
+packets build --subspace sub-xxxxxx --wait
 ```
 
-### 6. Connect AI Coding Assistants (MCP)
-Add Packets to your Claude Desktop or Cursor MCP config:
+* Run any command or open a shell inside the remote workspace:
+```bash
+packets exec "cargo check"
+packets subspace shell sub-xxxxxx
+```
 
+* Connect an AI assistant (Claude Desktop, Cursor) via MCP:
 ```json
 {
   "mcpServers": {
@@ -111,33 +86,24 @@ Add Packets to your Claude Desktop or Cursor MCP config:
 }
 ```
 
----
+## AI Usage
 
-## Documentation
+I used AI as a development assistant throughout Packets. I used it for debugging, exploring implementation approaches, understanding errors, reviewing code, and helping with development tasks. I also used AI while developing parts of the MCP/AI-agent integration. I reviewed, tested, and made the final implementation decisions myself.
 
-Full guides, CLI references, and architecture deep dives are available in the [`docs/`](./docs/README.md) directory:
+## Help
 
-- [**System Architecture**](./docs/architecture.md): Topology, gRPC control plane, and CAS storage pipeline.
-- [**CLI Reference**](./docs/cli/README.md): Flags, configuration files, and commands.
-- [**Subspaces Guide**](./docs/subspaces/README.md): Persistent workspaces and state machines.
-- [**Android Development**](./docs/toolchains/android.md): Gradle acceleration, ADB forwarding, and SDK discovery.
-- [**MCP Server & Tools**](./docs/mcp/tools.md): Tool schemas for AI agent integrations.
+Check connection status and cluster health:
+```bash
+packets status
+```
 
----
+View all available commands and flags:
+```bash
+packets --help
+```
 
-## Screenshots
-
-### Peer Fleet Status & Workspace Dashboard
-![Peer Fleet and Queue Dashboard](./archive/tui-fleet-status.png)
-
-### Remote Android Emulator Streaming
-![Android Remote Emulator Session](./archive/android-remote-session.png)
-
-### Artifact Extraction & Download
-![Artifact Extraction](./archive/artifact-download.png)
-
----
+Detailed guides and architecture notes are available in the [`docs/`](./docs/README.md) folder.
 
 ## License
 
-MIT © [Sahil](https://github.com/aikyaam) / [debaucheryparty](https://github.com/debaucheryparty)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
