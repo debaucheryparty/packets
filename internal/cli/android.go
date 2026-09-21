@@ -1,4 +1,4 @@
-﻿package cli
+package cli
 
 import (
 	"context"
@@ -42,6 +42,9 @@ func NewAndroidCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 		newAndroidSetupCommand(cfg, logger),
 		newAndroidScreenshotCommand(cfg, logger),
 		newAndroidBundleCommand(cfg, logger),
+		newAndroidKeystoreCommand(cfg, logger),
+		newAndroidSignCommand(cfg, logger),
+		newAndroidVerifyCommand(cfg, logger),
 	)
 	return cmd
 }
@@ -146,6 +149,38 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 					fmt.Printf("Remote Gradle:   %s\n", buildDur.Round(time.Millisecond))
 					fmt.Printf("Total Duration:  %s\n", totalDur.Round(time.Millisecond))
 				}
+				signFlag, _ := cmd.Flags().GetBool("sign")
+				if signFlag {
+					ksPath, _ := cmd.Flags().GetString("keystore")
+					ksPass, _ := cmd.Flags().GetString("keystore-pass")
+					keyAlias, _ := cmd.Flags().GetString("alias")
+					keyPass, _ := cmd.Flags().GetString("key-pass")
+					signCfg, err := android.ResolveSigningConfig(ksPath, ksPass, keyAlias, keyPass)
+					if err != nil {
+						return fmt.Errorf("resolve signing config: %w", err)
+					}
+					if isBundle {
+						aabFile, err := android.FindAAB(proj.Root, variant)
+						if err != nil {
+							return fmt.Errorf("find built bundle for signing: %w", err)
+						}
+						fmt.Printf("Signing bundle %s...\n", aabFile)
+						if err := android.SignAAB(ctx, aabFile, signCfg); err != nil {
+							return fmt.Errorf("sign bundle: %w", err)
+						}
+						fmt.Printf("Signed %s successfully\n", aabFile)
+					} else {
+						apkFile, err := android.FindAPK(proj.Root, variant)
+						if err != nil {
+							return fmt.Errorf("find built apk for signing: %w", err)
+						}
+						fmt.Printf("Signing APK %s...\n", apkFile)
+						if err := android.SignAPK(ctx, apkFile, apkFile, signCfg); err != nil {
+							return fmt.Errorf("sign apk: %w", err)
+						}
+						fmt.Printf("Signed %s successfully\n", apkFile)
+					}
+				}
 				return nil
 			}
 
@@ -162,6 +197,11 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 	cmd.Flags().Bool("force", false, "Re-upload entire workspace")
 	cmd.Flags().Bool("benchmark", false, "Measure build timing (Phase 9)")
 	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
+	cmd.Flags().Bool("sign", false, "Sign the downloaded artifact using keystore after build")
+	cmd.Flags().String("keystore", "", "Keystore path for signing")
+	cmd.Flags().String("keystore-pass", "", "Keystore password for signing")
+	cmd.Flags().String("alias", "", "Key alias for signing")
+	cmd.Flags().String("key-pass", "", "Key password for signing")
 	return cmd
 }
 
@@ -1634,3 +1674,177 @@ func validateSubspaceTarget(ctx context.Context, conn *grpc.ClientConn, subspace
 	}
 	return nil
 }
+
+func newAndroidKeystoreCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "keystore",
+		Short: "Android keystore provisioning and management",
+	}
+
+	genCmd := &cobra.Command{
+		Use:   "generate",
+		Short: "Generate a new cryptographic keystore for signing",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			path, _ := cmd.Flags().GetString("path")
+			alias, _ := cmd.Flags().GetString("alias")
+			pass, _ := cmd.Flags().GetString("password")
+			validity, _ := cmd.Flags().GetInt("validity")
+			dname, _ := cmd.Flags().GetString("dname")
+
+			if path == "" {
+				path = "release.keystore"
+			}
+			if pass == "" {
+				return fmt.Errorf("keystore password is required (--password)")
+			}
+
+			fmt.Printf("Generating keystore at %s (alias: %s)...\n", path, alias)
+			opts := android.KeystoreGenOpts{
+				Path:         path,
+				Alias:        alias,
+				Password:     pass,
+				ValidityDays: validity,
+				DName:        dname,
+			}
+			if err := android.GenerateKeystore(ctx, opts); err != nil {
+				return err
+			}
+			fmt.Printf("Keystore generated successfully at %s\n", path)
+			return nil
+		},
+	}
+	genCmd.Flags().String("path", "release.keystore", "Output path for the generated keystore")
+	genCmd.Flags().String("alias", "release", "Key alias")
+	genCmd.Flags().String("password", "", "Keystore and key password")
+	genCmd.Flags().Int("validity", 10000, "Validity in days")
+	genCmd.Flags().String("dname", "CN=Packets Developer, OU=Mobile, O=Packets, L=Unknown, ST=Unknown, C=US", "Distinguished name")
+
+	infoCmd := &cobra.Command{
+		Use:   "info <keystore>",
+		Short: "Display certificates and key entries in a keystore",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			ksPath := args[0]
+			pass, _ := cmd.Flags().GetString("password")
+			if pass == "" {
+				pass = "android"
+			}
+
+			keytoolBin := android.ResolveKeytoolPath()
+			keytoolArgs := []string{"-list", "-v", "-keystore", ksPath, "-storepass", pass}
+			execCmd := exec.CommandContext(ctx, keytoolBin, keytoolArgs...)
+			out, err := execCmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("keystore info failed: %w\n%s", err, string(out))
+			}
+			fmt.Print(string(out))
+			return nil
+		},
+	}
+	infoCmd.Flags().String("password", "", "Keystore password (default: android)")
+
+	cmd.AddCommand(genCmd, infoCmd)
+	return cmd
+}
+
+func newAndroidSignCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "sign <file.apk|file.aab>",
+		Short: "Sign an Android APK or App Bundle (.aab)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			input := args[0]
+			ksPath, _ := cmd.Flags().GetString("keystore")
+			ksPass, _ := cmd.Flags().GetString("password")
+			keyAlias, _ := cmd.Flags().GetString("alias")
+			keyPass, _ := cmd.Flags().GetString("keypass")
+			outPath, _ := cmd.Flags().GetString("output")
+
+			signCfg, err := android.ResolveSigningConfig(ksPath, ksPass, keyAlias, keyPass)
+			if err != nil {
+				return err
+			}
+
+			ext := strings.ToLower(filepath.Ext(input))
+			if ext == ".aab" {
+				target := input
+				if outPath != "" && outPath != input {
+					data, err := os.ReadFile(input)
+					if err != nil {
+						return fmt.Errorf("read input aab: %w", err)
+					}
+					if err := os.WriteFile(outPath, data, 0o644); err != nil {
+						return fmt.Errorf("write output aab: %w", err)
+					}
+					target = outPath
+				}
+				fmt.Printf("Signing Android App Bundle %s...\n", target)
+				if err := android.SignAAB(ctx, target, signCfg); err != nil {
+					return err
+				}
+				fmt.Printf("Successfully signed %s\n", target)
+				return nil
+			}
+
+			if outPath == "" {
+				outPath = input
+			}
+			fmt.Printf("Signing Android APK %s...\n", input)
+			if err := android.SignAPK(ctx, input, outPath, signCfg); err != nil {
+				return err
+			}
+			fmt.Printf("Successfully signed APK -> %s\n", outPath)
+			return nil
+		},
+	}
+	cmd.Flags().String("keystore", "", "Path to keystore file (or PACKETS_ANDROID_KEYSTORE)")
+	cmd.Flags().String("password", "", "Keystore password (or PACKETS_ANDROID_KEYSTORE_PASSWORD)")
+	cmd.Flags().String("alias", "", "Key alias (or PACKETS_ANDROID_KEY_ALIAS)")
+	cmd.Flags().String("keypass", "", "Key password (or PACKETS_ANDROID_KEY_PASSWORD)")
+	cmd.Flags().String("output", "", "Output path for signed artifact (default: overwrite input)")
+	return cmd
+}
+
+func newAndroidVerifyCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "verify <file.apk|file.aab>",
+		Short: "Verify the digital signature of an APK or App Bundle",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			input := args[0]
+			ext := strings.ToLower(filepath.Ext(input))
+			if ext == ".aab" {
+				fmt.Printf("Verifying App Bundle %s...\n", input)
+				if err := android.VerifyAAB(ctx, input); err != nil {
+					return err
+				}
+				fmt.Println("App Bundle signature verified (valid jarsigner signature).")
+				return nil
+			}
+
+			fmt.Printf("Verifying APK %s...\n", input)
+			res, err := android.VerifyAPK(ctx, input)
+			if err != nil {
+				return err
+			}
+			fmt.Println("APK signature verified successfully.")
+			fmt.Printf("  v1 scheme (JAR signing):        %t\n", res.V1Scheme)
+			fmt.Printf("  v2 scheme (APK Signature v2):  %t\n", res.V2Scheme)
+			fmt.Printf("  v3 scheme (APK Signature v3):  %t\n", res.V3Scheme)
+			fmt.Printf("  v4 scheme (APK Signature v4):  %t\n", res.V4Scheme)
+			if len(res.Signers) > 0 {
+				fmt.Println("Signers:")
+				for _, s := range res.Signers {
+					fmt.Printf("  - %s\n", s)
+				}
+			}
+			return nil
+		},
+	}
+	return cmd
+}
+
