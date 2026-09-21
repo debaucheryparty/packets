@@ -1847,4 +1847,3 @@ func newAndroidVerifyCommand(cfg *config.Config, logger *slog.Logger) *cobra.Com
 	}
 	return cmd
 }
-

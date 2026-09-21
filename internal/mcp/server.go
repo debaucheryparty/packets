@@ -2091,7 +2091,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			SourceMode:     string(apitypes.SourceModeWorkspace),
 			SnapshotRef:    snapshotRef,
 			CommandArgs:    []string{gradleTask},
-			ArtifactPaths: []string{artifactGlob},
+			ArtifactPaths:  []string{artifactGlob},
 			ProjectId:      projectID,
 			ApprovalTicket: ticketID,
 		})
