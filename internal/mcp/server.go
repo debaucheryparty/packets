@@ -622,6 +622,33 @@ func (s *Server) listTools() []Tool {
 				Required: []string{"command"},
 			},
 		},
+		{
+			Name:        "packets_android_bundle_build",
+			Description: "Build an Android App Bundle (.aab) remotely",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"dir":             {Type: "string", Description: "Android project directory"},
+					"variant":         {Type: "string", Description: "Build variant (default: release)"},
+					"subspace_id":     {Type: "string", Description: "Optional remote Subspace ID"},
+					"approval_ticket": {Type: "string", Description: "Approval ticket ID from human approval"},
+				},
+			},
+		},
+		{
+			Name:        "packets_android_bundle_to_apks",
+			Description: "Convert an Android App Bundle (.aab) to an .apks archive or extract universal APK",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"aab_path":    {Type: "string", Description: "Path to input .aab file"},
+					"output_path": {Type: "string", Description: "Destination path for .apks or universal .apk"},
+					"universal":   {Type: "boolean", Description: "Generate a standalone universal APK"},
+					"serial":      {Type: "string", Description: "Target device serial to optimize APK splits"},
+				},
+				Required: []string{"aab_path"},
+			},
+		},
 	}
 }
 
@@ -1941,6 +1968,127 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult("Remote ADB shell failed: " + remErr.Error() + "\n" + remOut)
 		}
 		return textResult(remOut)
+
+	case "packets_android_bundle_build":
+		variant, _ := params.Arguments["variant"].(string)
+		if variant == "" {
+			variant = "release"
+		}
+		subspaceID, _ := params.Arguments["subspace_id"].(string)
+		ticketID, _ := params.Arguments["approval_ticket"].(string)
+		projectID := project.ResolveProjectID(dir)
+
+		taskVariant := variant
+		if len(taskVariant) > 0 {
+			taskVariant = strings.ToUpper(taskVariant[:1]) + taskVariant[1:]
+		}
+		gradleTask := fmt.Sprintf("bundle%s", taskVariant)
+
+		ec := policy.ExecutionContext{
+			User:         "default",
+			ProjectID:    projectID,
+			WorkspaceID:  projectID,
+			SnapshotHash: "",
+			Command:      "android_bundle_build",
+			Args:         []string{gradleTask},
+			Action:       "BUILD",
+		}
+
+		if s.policy != nil && s.policy.RequiresApprovalFor(ec) {
+			if ticketID == "" {
+				pending, err := s.policy.CreatePendingApproval(ec)
+				if err != nil {
+					return errorResult(fmt.Sprintf("Failed creating approval: %v", err))
+				}
+				return CallToolResult{
+					Content: []TextContent{
+						{
+							Type: "text",
+							Text: fmt.Sprintf("APPROVAL_REQUIRED: Human approval is required before building Android App Bundle.\n"+
+								"Pending Request ID: %s\n"+
+								"Action: BUILD\n"+
+								"Task: %s\n"+
+								"Project ID: %s\n\n"+
+								"Approve via 'packets_approve' (or CLI 'packets approve %s'). Then retry with {\"approval_ticket\": \"<ticket>\"}.",
+								pending.ID, gradleTask, projectID, pending.ID),
+						},
+					},
+					IsError: true,
+				}
+			}
+		}
+
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		if subspaceID != "" {
+			if err := s.validateSubspace(ctx, conn, subspaceID); err != nil {
+				return errorResult(err.Error())
+			}
+		}
+
+		snapshotRef, err := workspace.UploadWorkspace(ctx, conn, dir, false)
+		if err != nil {
+			return errorResult("Workspace sync before bundle build failed: " + err.Error())
+		}
+
+		artifactGlob := fmt.Sprintf("app/build/outputs/bundle/%s/*.aab", variant)
+		cacheKey := fmt.Sprintf("%s:android-bundle:%s", projectID, snapshotRef)
+		client := pb.NewSchedulerClient(conn)
+		submitCtx := metadata.AppendToOutgoingContext(ctx, "x-approval-ticket", ticketID, "x-project-id", projectID)
+		resp, err := client.SubmitJob(submitCtx, &pb.SubmitJobRequest{
+			CacheKey:       cacheKey,
+			Toolchain:      string(apitypes.ToolchainAndroid),
+			Runner:         string(apitypes.RunnerDocker),
+			SourceMode:     string(apitypes.SourceModeWorkspace),
+			SnapshotRef:    snapshotRef,
+			CommandArgs:    []string{gradleTask},
+			ArtifactPaths: []string{artifactGlob},
+			ProjectId:      projectID,
+			ApprovalTicket: ticketID,
+		})
+		if err != nil {
+			return errorResult("Submit bundle build job failed: " + err.Error())
+		}
+		logContent, execErr := s.collectJobLogs(ctx, client, resp.JobId, params.Meta.ProgressToken)
+		if execErr != nil {
+			return CallToolResult{
+				Content: []TextContent{
+					{Type: "text", Text: fmt.Sprintf("Android App Bundle build FAILED (job: %s):\n%s\nError: %v", resp.JobId, logContent, execErr)},
+				},
+				IsError: true,
+			}
+		}
+		aabPath, _ := android.FindAAB(dir, variant)
+		return textResult(fmt.Sprintf("Android App Bundle build succeeded (job: %s):\n%s\nAAB Path: %s", resp.JobId, logContent, aabPath))
+
+	case "packets_android_bundle_to_apks":
+		aabPath, _ := params.Arguments["aab_path"].(string)
+		if aabPath == "" {
+			return errorResult("aab_path is required")
+		}
+		outPath, _ := params.Arguments["output_path"].(string)
+		if outPath == "" {
+			ext := filepath.Ext(aabPath)
+			outPath = strings.TrimSuffix(aabPath, ext) + ".apks"
+		}
+		universal, _ := params.Arguments["universal"].(bool)
+		serial, _ := params.Arguments["serial"].(string)
+
+		bt := android.NewExecBundletool()
+		if err := bt.BuildAPKs(ctx, aabPath, outPath, universal, serial); err != nil {
+			return errorResult(fmt.Sprintf("Failed building APKs from bundle: %v", err))
+		}
+		fi, _ := os.Stat(outPath)
+		var size int64
+		if fi != nil {
+			size = fi.Size()
+		}
+		return textResult(fmt.Sprintf("APKs generated from bundle: %s (%d bytes)", outPath, size))
 
 	default:
 		return errorResult(fmt.Sprintf("Unknown tool: %s", params.Name))

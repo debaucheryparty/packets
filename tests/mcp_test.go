@@ -164,45 +164,47 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("Unmarshal list response: %v", err)
 	}
 
-	if len(listResp.Result.Tools) != 34 {
-		t.Errorf("expected 34 tools, got %d", len(listResp.Result.Tools))
+	if len(listResp.Result.Tools) != 36 {
+		t.Errorf("expected 36 tools, got %d", len(listResp.Result.Tools))
 	}
 
 	expectedTools := map[string]bool{
-		"packets_workspace_info":       false,
-		"packets_env_check":            false,
-		"packets_env_prepare":          false,
-		"packets_sync":                 false,
-		"packets_sync_full":            false,
-		"packets_approve":              false,
-		"packets_build":                false,
-		"packets_test":                 false,
-		"packets_exec":                 false,
-		"packets_logs":                 false,
-		"packets_artifacts":            false,
-		"packets_pull":                 false,
-		"packets_status":               false,
-		"packets_subspace_create":      false,
-		"packets_subspace_list":        false,
-		"packets_subspace_status":      false,
-		"packets_subspace_destroy":     false,
-		"packets_subspace_sleep":       false,
-		"packets_subspace_wake":        false,
-		"packets_service_list":         false,
-		"packets_service_start":        false,
-		"packets_service_stop":         false,
-		"packets_transaction_create":   false,
-		"packets_transaction_status":   false,
-		"packets_transaction_commit":   false,
-		"packets_transaction_rollback": false,
-		"packets_devfile_get":          false,
-		"packets_devfile_validate":     false,
-		"packets_android_devices":      false,
-		"packets_android_screenshot":   false,
-		"packets_android_run":          false,
-		"packets_android_logcat":       false,
-		"packets_android_install":      false,
-		"packets_android_shell":        false,
+		"packets_workspace_info":         false,
+		"packets_env_check":              false,
+		"packets_env_prepare":            false,
+		"packets_sync":                   false,
+		"packets_sync_full":              false,
+		"packets_approve":                false,
+		"packets_build":                  false,
+		"packets_test":                   false,
+		"packets_exec":                   false,
+		"packets_logs":                   false,
+		"packets_artifacts":              false,
+		"packets_pull":                   false,
+		"packets_status":                 false,
+		"packets_subspace_create":        false,
+		"packets_subspace_list":          false,
+		"packets_subspace_status":        false,
+		"packets_subspace_destroy":       false,
+		"packets_subspace_sleep":         false,
+		"packets_subspace_wake":          false,
+		"packets_service_list":           false,
+		"packets_service_start":          false,
+		"packets_service_stop":           false,
+		"packets_transaction_create":     false,
+		"packets_transaction_status":     false,
+		"packets_transaction_commit":     false,
+		"packets_transaction_rollback":   false,
+		"packets_devfile_get":            false,
+		"packets_devfile_validate":       false,
+		"packets_android_devices":        false,
+		"packets_android_screenshot":     false,
+		"packets_android_run":            false,
+		"packets_android_logcat":         false,
+		"packets_android_install":        false,
+		"packets_android_shell":          false,
+		"packets_android_bundle_build":   false,
+		"packets_android_bundle_to_apks": false,
 	}
 
 	for _, tool := range listResp.Result.Tools {
@@ -572,5 +574,20 @@ func TestMCPServer_AndroidTools(t *testing.T) {
 	}
 	if !strings.Contains(resShell.Content[0].Text, "APPROVAL_REQUIRED") {
 		t.Fatalf("expected APPROVAL_REQUIRED in output, got: %s", resShell.Content[0].Text)
+	}
+
+	resBundle := callMCPTool(t, server, "packets_android_bundle_build", map[string]interface{}{
+		"variant": "release",
+	})
+	if !resBundle.IsError {
+		t.Fatalf("expected packets_android_bundle_build to require approval")
+	}
+	if !strings.Contains(resBundle.Content[0].Text, "APPROVAL_REQUIRED") {
+		t.Fatalf("expected APPROVAL_REQUIRED in output, got: %s", resBundle.Content[0].Text)
+	}
+
+	resApks := callMCPTool(t, server, "packets_android_bundle_to_apks", map[string]interface{}{})
+	if !resApks.IsError {
+		t.Fatalf("expected packets_android_bundle_to_apks to error on missing aab_path")
 	}
 }
