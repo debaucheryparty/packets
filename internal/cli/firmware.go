@@ -63,7 +63,7 @@ func newFirmwareBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Com
 				board = "halo"
 			}
 
-			fmt.Printf("✓ Zephyr project detected (board: %s)\n", board)
+			fmt.Printf("Zephyr project detected (board: %s)\n", board)
 
 			conn, err := DialScheduler(ctx, cfg)
 			if err != nil {
@@ -77,7 +77,7 @@ func newFirmwareBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Com
 			if err != nil {
 				return fmt.Errorf("workspace sync: %w", err)
 			}
-			fmt.Printf("✓ Workspace uploaded (ref: %s, duration: %s)\n", snapshotRef, time.Since(uploadStart).Round(time.Millisecond))
+			fmt.Printf("Workspace uploaded (ref: %s, duration: %s)\n", snapshotRef, time.Since(uploadStart).Round(time.Millisecond))
 
 			buildArgs := []string{"build"}
 			if board != "" {
@@ -121,7 +121,7 @@ func newFirmwareBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Com
 				if err != nil {
 					return err
 				}
-				fmt.Println("✓ Firmware build completed. Artifacts extracted to build/zephyr/")
+				fmt.Println("Firmware build completed. Artifacts extracted to build/zephyr/")
 				return nil
 			}
 

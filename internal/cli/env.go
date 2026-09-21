@@ -128,28 +128,20 @@ func newEnvCheckCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 			for compType, reqs := range report.Components {
 				fmt.Printf("Component: %s\n", compType)
 				for _, req := range reqs {
-					statusSymbol := "✓"
-					switch req.Status {
-					case environment.StatusMissing:
-						statusSymbol = "✗"
-					case environment.StatusWarning:
-						statusSymbol = "!"
-					}
-
 					details := ""
 					if req.Details != "" {
 						details = fmt.Sprintf("(%s)", req.Details)
 					}
 
-					fmt.Printf("  %s %-25s %-8s %s\n", statusSymbol, req.Name, req.Status, details)
+					fmt.Printf("  %-25s %-10s %s\n", req.Name, req.Status, details)
 				}
 				fmt.Println()
 			}
 
 			if report.AllReady {
-				fmt.Println("✓ All required environment toolchains are ready!")
+				fmt.Println("All required environment toolchains are ready!")
 			} else {
-				fmt.Println("✗ Some requirements are missing. Run 'packets env prepare .' to provision them.")
+				fmt.Println("Some requirements are missing. Run 'packets env prepare .' to provision them.")
 			}
 
 			return nil
@@ -291,7 +283,7 @@ Supported types: android, zephyr, rust, go, node, python, cmake, java, swift, ru
 				return fmt.Errorf("failed saving component override: %w", err)
 			}
 
-			fmt.Printf("✓ Configured component: %s", compType)
+			fmt.Printf("Configured component: %s", compType)
 			if relPath != "" {
 				fmt.Printf(" [path: %s]", relPath)
 			}
@@ -344,7 +336,7 @@ func newEnvRemoveCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
 				return fmt.Errorf("failed updating .packets/project.json: %w", err)
 			}
 
-			fmt.Printf("✓ Removed component %q from .packets/project.json\n", compType)
+			fmt.Printf("Removed component %q from .packets/project.json\n", compType)
 			return nil
 		},
 	}
@@ -376,7 +368,7 @@ func newEnvResetCommand(_ *config.Config, _ *slog.Logger) *cobra.Command {
 				return fmt.Errorf("failed resetting .packets/project.json: %w", err)
 			}
 
-			fmt.Println("✓ Cleared manual component overrides. Heuristic auto-detection restored.")
+			fmt.Println("Cleared manual component overrides. Heuristic auto-detection restored.")
 			return nil
 		},
 	}

@@ -175,7 +175,7 @@ func executeViaScheduler(
 				return fmt.Errorf("auto-wake subspace %s: %w", subspaceID, wakeErr)
 			}
 			logger.InfoContext(ctx, "auto-woke sleeping subspace", slog.String("subspace_id", subspaceID))
-			fmt.Printf("✓ Auto-woke sleeping subspace %s\n", wakeResp.Subspace.Id)
+			fmt.Printf("Auto-woke sleeping subspace %s\n", wakeResp.Subspace.Id)
 			subResp = wakeResp
 		}
 		if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {

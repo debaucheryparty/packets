@@ -618,7 +618,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 		if err != nil {
 			return errorResult("Sync failed: " + err.Error())
 		}
-		return textResult(fmt.Sprintf("✓ Workspace synchronized (ref: %s)", ref))
+		return textResult(fmt.Sprintf("Workspace synchronized (ref: %s)", ref))
 
 	case "packets_sync_full":
 		conn, err := s.dialScheduler(ctx)
@@ -633,7 +633,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 		if err != nil {
 			return errorResult("Full sync failed: " + err.Error())
 		}
-		return textResult(fmt.Sprintf("✓ Workspace fully synchronized with deletion detection (ref: %s)", ref))
+		return textResult(fmt.Sprintf("Workspace fully synchronized with deletion detection (ref: %s)", ref))
 
 	case "packets_approve":
 		reqID, _ := params.Arguments["request_id"].(string)
@@ -647,7 +647,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 		if err != nil {
 			return errorResult(fmt.Sprintf("Approval failed: %v", err))
 		}
-		return textResult(fmt.Sprintf("✓ Approved request %s.\nApproval Ticket: %s\n(Single-use, expires in 5 minutes. Bound to exact snapshot and command.)", reqID, ticket.ID))
+		return textResult(fmt.Sprintf("Approved request %s.\nApproval Ticket: %s\n(Single-use, expires in 5 minutes. Bound to exact snapshot and command.)", reqID, ticket.ID))
 
 	case "packets_build":
 		conn, err := s.dialScheduler(ctx)
@@ -743,7 +743,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			}
 		}
 
-		return textResult(fmt.Sprintf("✓ Build succeeded (job: %s, cache_hit: %t)\n%s", resp.JobId, resp.CacheHit, logContent))
+		return textResult(fmt.Sprintf("Build succeeded (job: %s, cache_hit: %t)\n%s", resp.JobId, resp.CacheHit, logContent))
 
 	case "packets_test":
 		conn, err := s.dialScheduler(ctx)
@@ -834,7 +834,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			}
 		}
 
-		return textResult(fmt.Sprintf("✓ Test succeeded (job: %s):\n%s", resp.JobId, logContent))
+		return textResult(fmt.Sprintf("Test succeeded (job: %s):\n%s", resp.JobId, logContent))
 
 	case "packets_exec":
 		cmdStr, _ := params.Arguments["command"].(string)
@@ -925,7 +925,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			}
 		}
 
-		return textResult(fmt.Sprintf("✓ Execution succeeded (job: %s):\n%s", resp.JobId, logContent))
+		return textResult(fmt.Sprintf("Execution succeeded (job: %s):\n%s", resp.JobId, logContent))
 
 	case "packets_logs":
 		jobID, _ := params.Arguments["job_id"].(string)
@@ -1010,7 +1010,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult(fmt.Sprintf("Extracting artifact failed: %v", err))
 		}
 
-		return textResult(fmt.Sprintf("✓ Artifacts for job %s retrieved and extracted to %s (%d bytes)", jobID, destDir, buf.Len()))
+		return textResult(fmt.Sprintf("Artifacts for job %s retrieved and extracted to %s (%d bytes)", jobID, destDir, buf.Len()))
 
 	case "packets_pull":
 		destDir := dir
@@ -1056,7 +1056,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			return errorResult(fmt.Sprintf("Extracting pulled outputs failed: %v", err))
 		}
 
-		return textResult(fmt.Sprintf("✓ Successfully pulled %d bytes of build outputs/artifacts to %s", buf.Len(), destDir))
+		return textResult(fmt.Sprintf("Successfully pulled %d bytes of build outputs/artifacts to %s", buf.Len(), destDir))
 
 	case "packets_status":
 		conn, err := s.dialScheduler(ctx)
@@ -1066,7 +1066,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 		if s.conn == nil {
 			defer func() { _ = conn.Close() }()
 		}
-		return textResult("✓ Packets scheduler daemon is active, healthy, and reachable via gRPC.")
+		return textResult("Packets scheduler daemon is active, healthy, and reachable via gRPC.")
 
 	case "packets_subspace_create":
 		conn, err := s.dialScheduler(ctx)
@@ -1394,7 +1394,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			if err != nil {
 				return errorResult("Devfile validation failed: " + err.Error())
 			}
-			return textResult(fmt.Sprintf("✓ Valid devfile: %s (services: %d, ports: %d)", df.Name, len(df.Services), len(df.Ports)))
+			return textResult(fmt.Sprintf("Valid devfile: %s (services: %d, ports: %d)", df.Name, len(df.Services), len(df.Ports)))
 		}
 
 		path, found := devfile.Find(dir)
@@ -1405,7 +1405,7 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 		if err != nil {
 			return errorResult("Devfile validation failed for " + path + ": " + err.Error())
 		}
-		return textResult(fmt.Sprintf("✓ Valid devfile at %s: %s (services: %d, ports: %d)", path, df.Name, len(df.Services), len(df.Ports)))
+		return textResult(fmt.Sprintf("Valid devfile at %s: %s (services: %d, ports: %d)", path, df.Name, len(df.Services), len(df.Ports)))
 
 	default:
 		return errorResult(fmt.Sprintf("Unknown tool: %s", params.Name))

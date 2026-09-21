@@ -145,7 +145,7 @@ func newServiceStartCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 			}
 
 			s := resp.Service
-			fmt.Println("✓ Service started successfully")
+			fmt.Println("Service started successfully")
 			fmt.Printf("  Name:        %s\n", s.Name)
 			fmt.Printf("  Subspace:    %s\n", s.SubspaceId)
 			fmt.Printf("  Status:      %s\n", s.Status)
@@ -197,7 +197,7 @@ func newServiceStopCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 				return fmt.Errorf("stop service %s: %w", name, err)
 			}
 
-			fmt.Printf("✓ Service %s stopped (status: %s)\n", resp.Service.Name, resp.Service.Status)
+			fmt.Printf("Service %s stopped (status: %s)\n", resp.Service.Name, resp.Service.Status)
 			return nil
 		},
 	}
@@ -238,7 +238,7 @@ func newServiceRestartCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command
 				return fmt.Errorf("restart service %s: %w", name, err)
 			}
 
-			fmt.Printf("✓ Service %s restarted (status: %s)\n", resp.Service.Name, resp.Service.Status)
+			fmt.Printf("Service %s restarted (status: %s)\n", resp.Service.Name, resp.Service.Status)
 			return nil
 		},
 	}
@@ -328,7 +328,7 @@ func resolveSubspaceID(ctx context.Context, conn *grpc.ClientConn, subspaceFlag 
 	if err == nil && subResp != nil && subResp.Subspace != nil && subResp.Subspace.State == "sleeping" {
 		wakeResp, wakeErr := subClient.WakeSubspace(ctx, &pb.WakeSubspaceRequest{Id: subID})
 		if wakeErr == nil && wakeResp != nil {
-			fmt.Printf("✓ Auto-woke sleeping subspace %s\n", wakeResp.Subspace.Id)
+			fmt.Printf("Auto-woke sleeping subspace %s\n", wakeResp.Subspace.Id)
 		}
 	}
 
@@ -394,7 +394,7 @@ func newServiceUpCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("start service %s: %w", s.Name, err)
 				}
-				fmt.Printf("✓ Service %s started (status: %s, driver: %s)\n", resp.Service.Name, resp.Service.Status, resp.Service.Driver)
+				fmt.Printf("Service %s started (status: %s, driver: %s)\n", resp.Service.Name, resp.Service.Status, resp.Service.Driver)
 			}
 			return nil
 		},
@@ -471,7 +471,7 @@ func newServiceDownCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("stop service %s: %w", name, err)
 				}
-				fmt.Printf("✓ Service %s stopped (status: %s)\n", resp.Service.Name, resp.Service.Status)
+				fmt.Printf("Service %s stopped (status: %s)\n", resp.Service.Name, resp.Service.Status)
 			}
 			return nil
 		},

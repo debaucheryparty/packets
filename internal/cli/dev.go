@@ -62,14 +62,7 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 				for compType, reqs := range report.Components {
 					fmt.Printf("  [%s]\n", compType)
 					for _, req := range reqs {
-						status := "✓"
-						switch req.Status {
-						case environment.StatusMissing:
-							status = "✗"
-						case environment.StatusWarning:
-							status = "!"
-						}
-						fmt.Printf("    %s %-20s %s\n", status, req.Name, req.Status)
+						fmt.Printf("    %-20s %s\n", req.Name, req.Status)
 					}
 				}
 			}
@@ -79,9 +72,9 @@ func NewDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 			if err := project.GenerateInstructions(absDir); err != nil {
 				logger.WarnContext(ctx, "failed generating instructions", slog.String("err", err.Error()))
 			} else {
-				fmt.Println("  ✓ Generated AGENTS.md")
-				fmt.Println("  ✓ Generated .cursor/rules/packets.mdc")
-				fmt.Println("  ✓ Configured .vscode/mcp.json")
+				fmt.Println("  Generated AGENTS.md")
+				fmt.Println("  Generated .cursor/rules/packets.mdc")
+				fmt.Println("  Configured .vscode/mcp.json")
 			}
 			fmt.Println()
 

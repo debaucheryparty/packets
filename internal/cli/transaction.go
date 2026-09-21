@@ -77,7 +77,7 @@ func newTransactionCreateCommand(cfg *config.Config, _ *slog.Logger) *cobra.Comm
 			}
 
 			tx := resp.Transaction
-			fmt.Println("✓ Transaction opened successfully")
+			fmt.Println("Transaction opened successfully")
 			fmt.Printf("  ID:            %s\n", tx.Id)
 			fmt.Printf("  Project:       %s\n", tx.ProjectId)
 			if tx.SubspaceId != "" {
@@ -132,7 +132,7 @@ func newTransactionCommitCommand(cfg *config.Config, _ *slog.Logger) *cobra.Comm
 				return fmt.Errorf("commit transaction %s: %w", id, err)
 			}
 
-			fmt.Printf("✓ Transaction %s committed (snapshot: %s)\n", resp.Transaction.Id, resp.Transaction.WorkingSnapshotRef)
+			fmt.Printf("Transaction %s committed (snapshot: %s)\n", resp.Transaction.Id, resp.Transaction.WorkingSnapshotRef)
 			return nil
 		},
 	}
@@ -165,7 +165,7 @@ func newTransactionRollbackCommand(cfg *config.Config, _ *slog.Logger) *cobra.Co
 				return fmt.Errorf("rollback transaction %s: %w", id, err)
 			}
 
-			fmt.Printf("✓ Transaction %s rolled back to %s\n", resp.Transaction.Id, resp.Transaction.BaseSnapshotRef)
+			fmt.Printf("Transaction %s rolled back to %s\n", resp.Transaction.Id, resp.Transaction.BaseSnapshotRef)
 			return nil
 		},
 	}

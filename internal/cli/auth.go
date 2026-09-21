@@ -59,7 +59,7 @@ func newAuthLoginCommand(_ *config.Config) *cobra.Command {
 				return fmt.Errorf("save profile: %w", err)
 			}
 
-			fmt.Println("✓ Credentials successfully saved to ~/.packets/config.yaml")
+			fmt.Println("Credentials successfully saved to ~/.packets/config.yaml")
 			fmt.Printf("  Server Address: %s\n", prof.ServerAddr)
 			if prof.AuthToken != "" {
 				masked := maskToken(prof.AuthToken)
@@ -97,7 +97,7 @@ func newAuthSetTokenCommand(_ *config.Config) *cobra.Command {
 				return fmt.Errorf("save profile: %w", err)
 			}
 
-			fmt.Printf("✓ Authentication token updated: %s\n", maskToken(token))
+			fmt.Printf("Authentication token updated: %s\n", maskToken(token))
 			return nil
 		},
 	}
@@ -145,11 +145,11 @@ func newAuthStatusCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 			fmt.Println("Testing connectivity to Packets daemon...")
 			conn, err := DialScheduler(ctx, cfg)
 			if err != nil {
-				fmt.Printf("✗ Connection failed: %v\n", err)
+				fmt.Printf("Connection failed: %v\n", err)
 				return nil
 			}
 			defer func() { _ = conn.Close() }()
-			fmt.Println("✓ Successfully connected to Packets daemon!")
+			fmt.Println("Successfully connected to Packets daemon!")
 			return nil
 		},
 	}
@@ -170,7 +170,7 @@ func newAuthLogoutCommand(_ *config.Config) *cobra.Command {
 				return fmt.Errorf("save profile: %w", err)
 			}
 
-			fmt.Println("✓ Auth token cleared from profile.")
+			fmt.Println("Auth token cleared from profile.")
 			return nil
 		},
 	}

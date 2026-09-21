@@ -66,7 +66,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 				return fmt.Errorf("no Android project found in %s\n"+
 					"  Required: gradlew + app/ directory", dir)
 			}
-			fmt.Printf("✓ Android project detected (confidence: %s)\n\n", proj.Confidence())
+			fmt.Printf("Android project detected (confidence: %s)\n\n", proj.Confidence())
 
 			variant, _ := cmd.Flags().GetString("variant")
 			waitFlag, _ := cmd.Flags().GetBool("wait")
@@ -95,7 +95,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 				return fmt.Errorf("workspace upload: %w", err)
 			}
 			uploadDur := time.Since(uploadStart)
-			fmt.Printf("✓ Workspace uploaded (ref: %s, duration: %s)\n\n", snapshotRef, uploadDur.Round(time.Millisecond))
+			fmt.Printf("Workspace uploaded (ref: %s, duration: %s)\n\n", snapshotRef, uploadDur.Round(time.Millisecond))
 
 			fmt.Println("Collecting build environment fingerprint...")
 			cacheInputs, err := android.CollectCacheInputs(ctx, proj.Root, variant, snapshotRef)
@@ -121,7 +121,7 @@ func newAndroidBuildCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comm
 
 			fmt.Printf("Running Gradle (%s)...\n", gradleTask)
 			if resp.CacheHit {
-				fmt.Println("✓ Cache hit (reusing existing APK)")
+				fmt.Println("Cache hit (reusing existing APK)")
 			}
 
 			if waitFlag {
@@ -364,7 +364,7 @@ func newAndroidInstallCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 			if err := adb.Install(ctx, serial, apk); err != nil {
 				return fmt.Errorf("install: %w", err)
 			}
-			fmt.Println("✓ Installed")
+			fmt.Println("Installed")
 			return nil
 		},
 	}
@@ -412,7 +412,7 @@ func newAndroidRunCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 			if err := adb.Install(ctx, serial, apk); err != nil {
 				return fmt.Errorf("install: %w", err)
 			}
-			fmt.Println("✓ Installed")
+			fmt.Println("Installed")
 
 			if pkg == "" {
 				fmt.Println("\nNote: use --package and --activity to specify the entry point.")
@@ -425,7 +425,7 @@ func newAndroidRunCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 			if err != nil {
 				return fmt.Errorf("launch %s: %w\n%s", target, err, out)
 			}
-			fmt.Println("✓ Application launched")
+			fmt.Println("Application launched")
 			return nil
 		},
 	}
@@ -589,7 +589,7 @@ func newAndroidScreenshotCommand(cfg *config.Config, logger *slog.Logger) *cobra
 						if err := PullAndExtractArtifact(cmd.Context(), cfg, logger, resp.JobId, pwd); err != nil {
 							return err
 						}
-						fmt.Printf("✓ Screenshot saved to %s\n", filepath.Join(pwd, outPath))
+						fmt.Printf("Screenshot saved to %s\n", filepath.Join(pwd, outPath))
 						return nil
 					}
 					if st.State == pb.JobState_JOB_STATE_FAILED {
@@ -701,7 +701,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 				lines, _ := execRemoteCommand(ctx, cfg, "adb", "devices")
 				for _, d := range android.ParseDevicesOutput(strings.Join(lines, "\n")) {
 					if d.Type == android.DeviceTypeEmulator && (d.Status == "ready" || d.State == "device") {
-						fmt.Printf("✓ Emulator already running (%s)\n", d.Serial)
+						fmt.Printf("Emulator already running (%s)\n", d.Serial)
 						return nil
 					}
 				}
@@ -722,7 +722,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 
 					res, err := execRemoteCommand(ctx, cfg, "adb", "shell", "getprop", "sys.boot_completed")
 					if err == nil && strings.TrimSpace(strings.Join(res, "")) == "1" {
-						fmt.Println("✓ Remote boot complete (emulator ready)")
+						fmt.Println("Remote boot complete (emulator ready)")
 						return nil
 					}
 				}
@@ -747,12 +747,12 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 				return startRemote()
 			}
 
-			fmt.Printf("✓ Emulator started (serial: %s)\n", serial)
+			fmt.Printf("Emulator started (serial: %s)\n", serial)
 			fmt.Println("Waiting for Android to boot...")
 			if err := mgr.WaitForBoot(ctx, serial, 5*time.Minute); err != nil {
 				return fmt.Errorf("boot timeout: %w", err)
 			}
-			fmt.Println("✓ Boot complete")
+			fmt.Println("Boot complete")
 			return nil
 		},
 	}
@@ -773,14 +773,14 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			fmt.Printf("Stopping %s...\n", serial)
 			if !remoteFlag {
 				if err := mgr.Stop(cmd.Context(), serial); err == nil {
-					fmt.Println("✓ Emulator stopped")
+					fmt.Println("Emulator stopped")
 					return nil
 				}
 			}
 			if _, err := execRemoteCommand(cmd.Context(), cfg, "adb", "-s", serial, "emu", "kill"); err != nil {
 				return fmt.Errorf("stop remote emulator: %w", err)
 			}
-			fmt.Println("✓ Emulator stopped on remote node")
+			fmt.Println("Emulator stopped on remote node")
 			return nil
 		},
 	}
@@ -862,7 +862,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			if err := mgr.SaveSnapshot(cmd.Context(), serial, name); err != nil {
 				return err
 			}
-			fmt.Printf("✓ Snapshot %q saved\n", name)
+			fmt.Printf("Snapshot %q saved\n", name)
 			return nil
 		},
 	}
@@ -879,7 +879,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			if err := mgr.LoadSnapshot(cmd.Context(), serial, name); err != nil {
 				return err
 			}
-			fmt.Printf("✓ Snapshot %q restored\n", name)
+			fmt.Printf("Snapshot %q restored\n", name)
 			return nil
 		},
 	}
@@ -918,7 +918,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			if err := mgr.DeleteSnapshot(cmd.Context(), serial, name); err != nil {
 				return err
 			}
-			fmt.Printf("✓ Snapshot %q deleted\n", name)
+			fmt.Printf("Snapshot %q deleted\n", name)
 			return nil
 		},
 	}
@@ -957,12 +957,11 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 			snapshot, _ := cmd.Flags().GetString("snapshot")
 			noSnapshotLoad, _ := cmd.Flags().GetBool("no-snapshot-load")
 
-			fmt.Println("Android project detected        ", checkMark(true))
 			proj, err := android.DetectProject(dir)
 			if err != nil || !proj.IsValid() {
 				return fmt.Errorf("no Android project found in %s (need gradlew + app/)", dir)
 			}
-			fmt.Printf("✓ Android project detected (confidence: %s)\n", proj.Confidence())
+			fmt.Printf("Android project detected (confidence: %s)\n", proj.Confidence())
 
 			adbClient := android.NewExecADBClient()
 			emulatorMgr := android.NewAVDEmulatorManager(logger, adbClient)
@@ -979,13 +978,13 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 				if err != nil {
 					return fmt.Errorf("emulator start: %w\nSuggestion: run `packets android node check` to verify KVM and SDK are available", err)
 				}
-				fmt.Printf("✓ Emulator started (%s)\n", serial)
+				fmt.Printf("Emulator started (%s)\n", serial)
 
 				fmt.Println("Waiting for Android to boot...")
 				if err := emulatorMgr.WaitForBoot(ctx, serial, 5*time.Minute); err != nil {
 					return fmt.Errorf("boot timeout: %w", err)
 				}
-				fmt.Println("✓ Boot complete")
+				fmt.Println("Boot complete")
 			}
 
 			if err := runBuildInstallLaunch(ctx, cfg, logger, proj.Root, variant, serial, pkg, activity); err != nil {
@@ -1021,7 +1020,7 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 						logger.Warn("scrcpy exited", slog.String("err", err.Error()))
 					}
 				}()
-				fmt.Println("✓ Remote display connected (scrcpy window should open)")
+				fmt.Println("Remote display connected (scrcpy window should open)")
 			} else if !noDisplay && adbHost == "" {
 				fmt.Println("\nNote: pass --adb-host=<tailscale-ip> to start the remote display.")
 			}
@@ -1043,10 +1042,10 @@ func newAndroidDevCommand(cfg *config.Config, logger *slog.Logger) *cobra.Comman
 					if !hasSourceChanges(changes) {
 						continue
 					}
-					fmt.Printf("\n📦 %d file(s) changed, rebuilding...\n", len(changes))
+					fmt.Printf("\n%d file(s) changed, rebuilding...\n", len(changes))
 					if err := runBuildInstallLaunch(ctx, cfg, logger, proj.Root, variant, serial, pkg, activity); err != nil {
 						logger.Error("rebuild failed", slog.String("err", err.Error()))
-						fmt.Println("⚠ Rebuild failed. Watching for next change...")
+						fmt.Println("Rebuild failed. Watching for next change...")
 					}
 				}
 			}
@@ -1121,7 +1120,7 @@ func newAndroidConnectCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 			if err == nil {
 				fmt.Printf("\nActive ADB devices:\n%s\n", string(devicesOut))
 			}
-			fmt.Println("✓ Android Studio is now ready to detect and target this remote emulator.")
+			fmt.Println("Android Studio is now ready to detect and target this remote emulator.")
 			return nil
 		},
 	}
@@ -1172,14 +1171,14 @@ func runBuildInstallLaunch(
 	}
 
 	if resp.CacheHit {
-		fmt.Println("✓ Cache hit (reusing APK)")
+		fmt.Println("Cache hit (reusing APK)")
 	} else {
 		fmt.Printf("Running Gradle (%s)...\n", gradleTask)
 		if err := pollJobStatus(ctx, cfg, client, resp.JobId, projectRoot, logger); err != nil {
 			return fmt.Errorf("gradle build failed (job: %s, variant: %s, remote output: `packets logs %s`): %w",
 				resp.JobId, variant, resp.JobId, err)
 		}
-		fmt.Println("✓ Build complete")
+		fmt.Println("Build complete")
 	}
 
 	apk, err := findAPK(projectRoot, variant)
@@ -1192,7 +1191,7 @@ func runBuildInstallLaunch(
 	if err := adb.Install(ctx, serial, apk); err != nil {
 		return fmt.Errorf("adb install: %w", err)
 	}
-	fmt.Println("✓ Installed")
+	fmt.Println("Installed")
 
 	if pkg != "" {
 		target := pkg + "/" + activity
@@ -1202,7 +1201,7 @@ func runBuildInstallLaunch(
 		if err != nil {
 			return fmt.Errorf("launch %s: %w\n%s", target, err, out)
 		}
-		fmt.Println("✓ Application launched")
+		fmt.Println("Application launched")
 	}
 	return nil
 }
@@ -1220,13 +1219,6 @@ func hasSourceChanges(changes []android.FileChangeEvent) bool {
 		}
 	}
 	return false
-}
-
-func checkMark(ok bool) string {
-	if ok {
-		return "✓"
-	}
-	return "✗"
 }
 
 func newAndroidNodeCheckCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
@@ -1267,14 +1259,14 @@ echo "AVDS: $(avdmanager list avd -c 2>&1 | tr '\n' ' ' || echo none)"
 			}
 
 			printCap := func(label string, ok bool, detail string) {
-				mark := "✓"
+				mark := "[ok]"
 				if !ok {
-					mark = "✗"
+					mark = "[missing]"
 				}
 				if detail != "" {
-					fmt.Printf("  %s  %-20s  %s\n", mark, label, detail)
+					fmt.Printf("  %-9s  %-20s  %s\n", mark, label, detail)
 				} else {
-					fmt.Printf("  %s  %s\n", mark, label)
+					fmt.Printf("  %-9s  %s\n", mark, label)
 				}
 			}
 
@@ -1314,7 +1306,7 @@ func newAndroidSetupCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 			if err := streamRemoteCommand(ctx, cfg, os.Stdout, "bash", "-c", script); err != nil {
 				return fmt.Errorf("android setup: %w", err)
 			}
-			fmt.Println("\n✓ Android environment setup complete.")
+			fmt.Println("\nAndroid environment setup complete.")
 			return nil
 		},
 	}
@@ -1342,7 +1334,7 @@ func validateSubspaceTarget(ctx context.Context, conn *grpc.ClientConn, subspace
 		if logger != nil {
 			logger.InfoContext(ctx, "auto-woke sleeping subspace", slog.String("subspace_id", subspaceFlag))
 		}
-		fmt.Printf("✓ Auto-woke sleeping subspace %s\n", wakeResp.Subspace.Id)
+		fmt.Printf("Auto-woke sleeping subspace %s\n", wakeResp.Subspace.Id)
 		subResp = wakeResp
 	}
 	if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
