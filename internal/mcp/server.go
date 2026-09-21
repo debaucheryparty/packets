@@ -649,6 +649,50 @@ func (s *Server) listTools() []Tool {
 				Required: []string{"aab_path"},
 			},
 		},
+		{
+			Name:        "packets_android_sign",
+			Description: "Sign an Android APK or App Bundle (.aab)",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"file_path":         {Type: "string", Description: "Path to APK or AAB file to sign"},
+					"keystore_path":     {Type: "string", Description: "Path to keystore file"},
+					"keystore_password": {Type: "string", Description: "Keystore password"},
+					"key_alias":         {Type: "string", Description: "Key alias"},
+					"key_password":      {Type: "string", Description: "Key password"},
+					"output_path":       {Type: "string", Description: "Output path for signed artifact (default: overwrite input)"},
+					"approval_ticket":   {Type: "string", Description: "Approval ticket ID from human approval"},
+				},
+				Required: []string{"file_path"},
+			},
+		},
+		{
+			Name:        "packets_android_verify",
+			Description: "Verify the digital signature of an Android APK or App Bundle (.aab)",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"file_path": {Type: "string", Description: "Path to APK or AAB file to verify"},
+				},
+				Required: []string{"file_path"},
+			},
+		},
+		{
+			Name:        "packets_android_keystore_gen",
+			Description: "Generate a new cryptographic keystore for Android signing",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"path":            {Type: "string", Description: "Output path for the generated keystore"},
+					"alias":           {Type: "string", Description: "Key alias (default: release)"},
+					"password":        {Type: "string", Description: "Keystore and key password"},
+					"validity_days":   {Type: "number", Description: "Validity in days (default: 10000)"},
+					"dname":           {Type: "string", Description: "Distinguished name for certificate"},
+					"approval_ticket": {Type: "string", Description: "Approval ticket ID from human approval"},
+				},
+				Required: []string{"path", "password"},
+			},
+		},
 	}
 }
 
@@ -2089,6 +2133,183 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 			size = fi.Size()
 		}
 		return textResult(fmt.Sprintf("APKs generated from bundle: %s (%d bytes)", outPath, size))
+
+	case "packets_android_sign":
+		filePath, _ := params.Arguments["file_path"].(string)
+		if filePath == "" {
+			return errorResult("file_path is required")
+		}
+		ksPath, _ := params.Arguments["keystore_path"].(string)
+		ksPass, _ := params.Arguments["keystore_password"].(string)
+		keyAlias, _ := params.Arguments["key_alias"].(string)
+		keyPass, _ := params.Arguments["key_password"].(string)
+		outPath, _ := params.Arguments["output_path"].(string)
+		ticketID, _ := params.Arguments["approval_ticket"].(string)
+		projectID := project.ResolveProjectID(dir)
+
+		ec := policy.ExecutionContext{
+			User:         "default",
+			ProjectID:    projectID,
+			WorkspaceID:  projectID,
+			SnapshotHash: "",
+			Command:      "android_sign",
+			Args:         []string{filePath},
+			Action:       "SIGN",
+		}
+
+		if s.policy != nil && s.policy.RequiresApprovalFor(ec) {
+			if ticketID == "" {
+				pending, err := s.policy.CreatePendingApproval(ec)
+				if err != nil {
+					return errorResult(fmt.Sprintf("Failed creating approval: %v", err))
+				}
+				return CallToolResult{
+					Content: []TextContent{
+						{
+							Type: "text",
+							Text: fmt.Sprintf("APPROVAL_REQUIRED: Human approval is required before signing Android artifact.\n"+
+								"Pending Request ID: %s\n"+
+								"Action: SIGN\n"+
+								"File: %s\n"+
+								"Project ID: %s\n\n"+
+								"Approve via 'packets_approve' (or CLI 'packets approve %s'). Then retry with {\"approval_ticket\": \"<ticket>\"}.",
+								pending.ID, filePath, projectID, pending.ID),
+						},
+					},
+					IsError: true,
+				}
+			}
+		}
+
+		signCfg, err := android.ResolveSigningConfig(ksPath, ksPass, keyAlias, keyPass)
+		if err != nil {
+			return errorResult(fmt.Sprintf("Signing configuration error: %v", err))
+		}
+
+		ext := strings.ToLower(filepath.Ext(filePath))
+		if ext == ".aab" {
+			target := filePath
+			if outPath != "" && outPath != filePath {
+				data, err := os.ReadFile(filePath)
+				if err != nil {
+					return errorResult(fmt.Sprintf("Failed reading input bundle: %v", err))
+				}
+				if err := os.WriteFile(outPath, data, 0o644); err != nil {
+					return errorResult(fmt.Sprintf("Failed writing output bundle: %v", err))
+				}
+				target = outPath
+			}
+			if err := android.SignAAB(ctx, target, signCfg); err != nil {
+				return errorResult(fmt.Sprintf("Failed signing App Bundle: %v", err))
+			}
+			return textResult(fmt.Sprintf("Successfully signed Android App Bundle: %s", target))
+		}
+
+		if outPath == "" {
+			outPath = filePath
+		}
+		if err := android.SignAPK(ctx, filePath, outPath, signCfg); err != nil {
+			return errorResult(fmt.Sprintf("Failed signing APK: %v", err))
+		}
+		return textResult(fmt.Sprintf("Successfully signed Android APK: %s", outPath))
+
+	case "packets_android_verify":
+		filePath, _ := params.Arguments["file_path"].(string)
+		if filePath == "" {
+			return errorResult("file_path is required")
+		}
+
+		ext := strings.ToLower(filepath.Ext(filePath))
+		if ext == ".aab" {
+			if err := android.VerifyAAB(ctx, filePath); err != nil {
+				return errorResult(fmt.Sprintf("App Bundle verification failed: %v", err))
+			}
+			return textResult(fmt.Sprintf("App Bundle verification succeeded for %s (valid jarsigner signature)", filePath))
+		}
+
+		res, err := android.VerifyAPK(ctx, filePath)
+		if err != nil {
+			return errorResult(fmt.Sprintf("APK verification failed: %v\nRaw log:\n%s", err, res.RawLog))
+		}
+
+		msg := fmt.Sprintf("APK verification succeeded for %s\n"+
+			"v1 scheme (JAR signing): %t\n"+
+			"v2 scheme (APK Signature v2): %t\n"+
+			"v3 scheme (APK Signature v3): %t\n"+
+			"v4 scheme (APK Signature v4): %t",
+			filePath, res.V1Scheme, res.V2Scheme, res.V3Scheme, res.V4Scheme)
+		if len(res.Signers) > 0 {
+			msg += "\nSigners:\n" + strings.Join(res.Signers, "\n")
+		}
+		return textResult(msg)
+
+	case "packets_android_keystore_gen":
+		path, _ := params.Arguments["path"].(string)
+		if path == "" {
+			return errorResult("path is required")
+		}
+		alias, _ := params.Arguments["alias"].(string)
+		if alias == "" {
+			alias = "release"
+		}
+		password, _ := params.Arguments["password"].(string)
+		if password == "" {
+			return errorResult("password is required")
+		}
+		validityDays := 10000
+		if vd, ok := params.Arguments["validity_days"].(float64); ok && vd > 0 {
+			validityDays = int(vd)
+		}
+		dname, _ := params.Arguments["dname"].(string)
+		ticketID, _ := params.Arguments["approval_ticket"].(string)
+		projectID := project.ResolveProjectID(dir)
+
+		ec := policy.ExecutionContext{
+			User:         "default",
+			ProjectID:    projectID,
+			WorkspaceID:  projectID,
+			SnapshotHash: "",
+			Command:      "android_keystore_gen",
+			Args:         []string{path, alias},
+			Action:       "KEYSTORE_GEN",
+		}
+
+		if s.policy != nil && s.policy.RequiresApprovalFor(ec) {
+			if ticketID == "" {
+				pending, err := s.policy.CreatePendingApproval(ec)
+				if err != nil {
+					return errorResult(fmt.Sprintf("Failed creating approval: %v", err))
+				}
+				return CallToolResult{
+					Content: []TextContent{
+						{
+							Type: "text",
+							Text: fmt.Sprintf("APPROVAL_REQUIRED: Human approval is required before generating keystore.\n"+
+								"Pending Request ID: %s\n"+
+								"Action: KEYSTORE_GEN\n"+
+								"Path: %s\n"+
+								"Alias: %s\n"+
+								"Project ID: %s\n\n"+
+								"Approve via 'packets_approve' (or CLI 'packets approve %s'). Then retry with {\"approval_ticket\": \"<ticket>\"}.",
+								pending.ID, path, alias, projectID, pending.ID),
+						},
+					},
+					IsError: true,
+				}
+			}
+		}
+
+		opts := android.KeystoreGenOpts{
+			Path:         path,
+			Alias:        alias,
+			Password:     password,
+			ValidityDays: validityDays,
+			DName:        dname,
+		}
+		if err := android.GenerateKeystore(ctx, opts); err != nil {
+			return errorResult(fmt.Sprintf("Failed generating keystore: %v", err))
+		}
+		return textResult(fmt.Sprintf("Keystore generated successfully at %s (alias: %s)", path, alias))
 
 	default:
 		return errorResult(fmt.Sprintf("Unknown tool: %s", params.Name))

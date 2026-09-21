@@ -164,8 +164,8 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("Unmarshal list response: %v", err)
 	}
 
-	if len(listResp.Result.Tools) != 36 {
-		t.Errorf("expected 36 tools, got %d", len(listResp.Result.Tools))
+	if len(listResp.Result.Tools) != 39 {
+		t.Errorf("expected 39 tools, got %d", len(listResp.Result.Tools))
 	}
 
 	expectedTools := map[string]bool{
@@ -205,6 +205,9 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		"packets_android_shell":          false,
 		"packets_android_bundle_build":   false,
 		"packets_android_bundle_to_apks": false,
+		"packets_android_sign":           false,
+		"packets_android_verify":         false,
+		"packets_android_keystore_gen":   false,
 	}
 
 	for _, tool := range listResp.Result.Tools {
@@ -589,5 +592,31 @@ func TestMCPServer_AndroidTools(t *testing.T) {
 	resApks := callMCPTool(t, server, "packets_android_bundle_to_apks", map[string]interface{}{})
 	if !resApks.IsError {
 		t.Fatalf("expected packets_android_bundle_to_apks to error on missing aab_path")
+	}
+
+	resSign := callMCPTool(t, server, "packets_android_sign", map[string]interface{}{
+		"file_path": "app.apk",
+	})
+	if !resSign.IsError {
+		t.Fatalf("expected packets_android_sign to require approval")
+	}
+	if !strings.Contains(resSign.Content[0].Text, "APPROVAL_REQUIRED") {
+		t.Fatalf("expected APPROVAL_REQUIRED in output, got: %s", resSign.Content[0].Text)
+	}
+
+	resVerify := callMCPTool(t, server, "packets_android_verify", map[string]interface{}{})
+	if !resVerify.IsError {
+		t.Fatalf("expected packets_android_verify to error on missing file_path")
+	}
+
+	resKSGen := callMCPTool(t, server, "packets_android_keystore_gen", map[string]interface{}{
+		"path":     "test.keystore",
+		"password": "secretpassword",
+	})
+	if !resKSGen.IsError {
+		t.Fatalf("expected packets_android_keystore_gen to require approval")
+	}
+	if !strings.Contains(resKSGen.Content[0].Text, "APPROVAL_REQUIRED") {
+		t.Fatalf("expected APPROVAL_REQUIRED in output, got: %s", resKSGen.Content[0].Text)
 	}
 }
