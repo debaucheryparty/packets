@@ -9,11 +9,13 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/debaucheryparty/packets/internal/android"
 	"github.com/debaucheryparty/packets/internal/config"
 	"github.com/debaucheryparty/packets/internal/environment"
 	"github.com/debaucheryparty/packets/internal/policy"
@@ -537,6 +539,87 @@ func (s *Server) listTools() []Tool {
 					"dir":     {Type: "string", Description: "Project directory containing packets.yaml"},
 					"content": {Type: "string", Description: "Optional raw YAML content to validate"},
 				},
+			},
+		},
+		{
+			Name:        "packets_android_devices",
+			Description: "List connected Android physical devices and running emulators on host or Subspace",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"subspace_id": {Type: "string", Description: "Optional remote Subspace ID to query"},
+				},
+			},
+		},
+		{
+			Name:        "packets_android_screenshot",
+			Description: "Capture a screenshot from an Android device or emulator display",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"dir":         {Type: "string", Description: "Project or destination directory"},
+					"serial":      {Type: "string", Description: "Target device serial"},
+					"output_path": {Type: "string", Description: "Output file path (default: screenshot.png)"},
+					"subspace_id": {Type: "string", Description: "Optional remote Subspace ID"},
+				},
+			},
+		},
+		{
+			Name:        "packets_android_run",
+			Description: "Build, install, and launch an Android application on target device or emulator",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"dir":             {Type: "string", Description: "Android project directory"},
+					"serial":          {Type: "string", Description: "Target device serial"},
+					"package":         {Type: "string", Description: "Application package name to launch"},
+					"activity":        {Type: "string", Description: "Activity to launch (default: .MainActivity)"},
+					"variant":         {Type: "string", Description: "Build variant (default: debug)"},
+					"subspace_id":     {Type: "string", Description: "Optional remote Subspace ID"},
+					"approval_ticket": {Type: "string", Description: "Approval ticket ID from human approval"},
+				},
+			},
+		},
+		{
+			Name:        "packets_android_logcat",
+			Description: "Retrieve recent logcat logs from target Android device or emulator",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"serial":      {Type: "string", Description: "Target device serial"},
+					"package":     {Type: "string", Description: "Filter logs by application package"},
+					"tag":         {Type: "string", Description: "Filter logs by tag"},
+					"lines":       {Type: "integer", Description: "Number of recent lines to retrieve (default: 100)"},
+					"subspace_id": {Type: "string", Description: "Optional remote Subspace ID"},
+				},
+			},
+		},
+		{
+			Name:        "packets_android_install",
+			Description: "Install an APK artifact onto target Android device or emulator",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"apk_path":        {Type: "string", Description: "Path to APK file to install"},
+					"serial":          {Type: "string", Description: "Target device serial"},
+					"subspace_id":     {Type: "string", Description: "Optional remote Subspace ID"},
+					"approval_ticket": {Type: "string", Description: "Approval ticket ID from human approval"},
+				},
+				Required: []string{"apk_path"},
+			},
+		},
+		{
+			Name:        "packets_android_shell",
+			Description: "Execute a one-shot ADB shell command on target Android device or emulator",
+			InputSchema: ToolSchema{
+				Type: "object",
+				Properties: map[string]PropertyDef{
+					"command":         {Type: "string", Description: "Shell command to run on device"},
+					"serial":          {Type: "string", Description: "Target device serial"},
+					"subspace_id":     {Type: "string", Description: "Optional remote Subspace ID"},
+					"approval_ticket": {Type: "string", Description: "Approval ticket ID from human approval"},
+				},
+				Required: []string{"command"},
 			},
 		},
 	}
@@ -1407,6 +1490,458 @@ func (s *Server) executeTool(ctx context.Context, params CallToolParams) CallToo
 		}
 		return textResult(fmt.Sprintf("Valid devfile at %s: %s (services: %d, ports: %d)", path, df.Name, len(df.Services), len(df.Ports)))
 
+	case "packets_android_devices":
+		subspaceID, _ := params.Arguments["subspace_id"].(string)
+		if subspaceID != "" {
+			conn, err := s.dialScheduler(ctx)
+			if err != nil {
+				return errorResult("Connect to Packets daemon failed: " + err.Error())
+			}
+			if s.conn == nil {
+				defer func() { _ = conn.Close() }()
+			}
+			if err := s.validateSubspace(ctx, conn, subspaceID); err != nil {
+				return errorResult(err.Error())
+			}
+			logs, err := s.execRemote(ctx, conn, "adb", "devices")
+			if err != nil {
+				return errorResult("Failed to query devices on subspace: " + err.Error())
+			}
+			devices := android.ParseDevicesOutput(logs)
+			data, _ := json.MarshalIndent(devices, "", "  ")
+			return textResult(string(data))
+		}
+
+		adb := android.NewExecADBClient()
+		devices, err := adb.Devices(ctx)
+		if err != nil || len(devices) == 0 {
+			if conn, connErr := s.dialScheduler(ctx); connErr == nil {
+				if s.conn == nil {
+					defer func() { _ = conn.Close() }()
+				}
+				if logs, remErr := s.execRemote(ctx, conn, "adb", "devices"); remErr == nil {
+					remDevices := android.ParseDevicesOutput(logs)
+					if len(remDevices) > 0 {
+						devices = remDevices
+						err = nil
+					}
+				}
+			}
+		}
+		if err != nil {
+			return errorResult("Failed to query android devices: " + err.Error())
+		}
+		data, _ := json.MarshalIndent(devices, "", "  ")
+		return textResult(string(data))
+
+	case "packets_android_screenshot":
+		subspaceID, _ := params.Arguments["subspace_id"].(string)
+		serial, _ := params.Arguments["serial"].(string)
+		outPath, _ := params.Arguments["output_path"].(string)
+		if outPath == "" {
+			outPath = "screenshot.png"
+		}
+		if !filepath.IsAbs(outPath) {
+			outPath = filepath.Join(dir, outPath)
+		}
+		_ = os.MkdirAll(filepath.Dir(outPath), 0o755)
+
+		if subspaceID == "" {
+			cmdArgs := []string{}
+			if serial != "" {
+				cmdArgs = append(cmdArgs, "-s", serial)
+			}
+			cmdArgs = append(cmdArgs, "exec-out", "screencap", "-p")
+			outFile, err := os.Create(outPath)
+			if err == nil {
+				cmd := exec.CommandContext(ctx, android.ResolveADBPath(), cmdArgs...)
+				cmd.Stdout = outFile
+				if runErr := cmd.Run(); runErr == nil {
+					_ = outFile.Close()
+					fi, statErr := os.Stat(outPath)
+					if statErr == nil && fi.Size() > 0 {
+						return textResult(fmt.Sprintf("Screenshot saved to %s (%d bytes)", outPath, fi.Size()))
+					}
+				}
+				_ = outFile.Close()
+			}
+		}
+
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		if subspaceID != "" {
+			if err := s.validateSubspace(ctx, conn, subspaceID); err != nil {
+				return errorResult(err.Error())
+			}
+		}
+		remoteSerial := ""
+		if serial != "" {
+			remoteSerial = "-s " + serial + " "
+		}
+		shCmd := fmt.Sprintf("adb %sexec-out screencap -p > /tmp/packets_screenshot.png", remoteSerial)
+		if _, err := s.execRemote(ctx, conn, "bash", "-c", shCmd); err != nil {
+			return errorResult("Failed capturing screenshot on remote node: " + err.Error())
+		}
+		return textResult(fmt.Sprintf("Screenshot captured on remote node at /tmp/packets_screenshot.png for device %s", serial))
+
+	case "packets_android_run":
+		projectID := project.ResolveProjectID(dir)
+		ticketID, _ := params.Arguments["approval_ticket"].(string)
+		pkgName, _ := params.Arguments["package"].(string)
+		activity, _ := params.Arguments["activity"].(string)
+		if activity == "" {
+			activity = ".MainActivity"
+		}
+		variant, _ := params.Arguments["variant"].(string)
+		if variant == "" {
+			variant = "debug"
+		}
+		subspaceID, _ := params.Arguments["subspace_id"].(string)
+		serial, _ := params.Arguments["serial"].(string)
+
+		ec := policy.ExecutionContext{
+			User:         "default",
+			ProjectID:    projectID,
+			WorkspaceID:  projectID,
+			SnapshotHash: "",
+			Command:      "android_run",
+			Args:         []string{pkgName, activity, variant},
+			Action:       "EXEC",
+		}
+
+		if s.policy != nil && s.policy.RequiresApprovalFor(ec) {
+			if ticketID == "" {
+				pending, err := s.policy.CreatePendingApproval(ec)
+				if err != nil {
+					return errorResult(fmt.Sprintf("Failed creating approval: %v", err))
+				}
+				return CallToolResult{
+					Content: []TextContent{
+						{
+							Type: "text",
+							Text: fmt.Sprintf("APPROVAL_REQUIRED: Human approval is required before running Android app.\n"+
+								"Pending Request ID: %s\n"+
+								"Action: EXEC\n"+
+								"Target: %s/%s\n"+
+								"Variant: %s\n"+
+								"Project ID: %s\n\n"+
+								"Approve via 'packets_approve' (or CLI 'packets approve %s'). Then retry with {\"approval_ticket\": \"<ticket>\"}.",
+								pending.ID, pkgName, activity, variant, projectID, pending.ID),
+						},
+					},
+					IsError: true,
+				}
+			}
+		}
+
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		if subspaceID != "" {
+			if err := s.validateSubspace(ctx, conn, subspaceID); err != nil {
+				return errorResult(err.Error())
+			}
+		}
+
+		snapshotRef, err := workspace.UploadWorkspace(ctx, conn, dir, false)
+		if err != nil {
+			return errorResult("Workspace sync before build failed: " + err.Error())
+		}
+
+		taskVariant := variant
+		if len(taskVariant) > 0 {
+			taskVariant = strings.ToUpper(taskVariant[:1]) + taskVariant[1:]
+		}
+		gradleTask := fmt.Sprintf("assemble%s", taskVariant)
+		cacheKey := fmt.Sprintf("%s:android:%s", projectID, snapshotRef)
+		client := pb.NewSchedulerClient(conn)
+		submitCtx := metadata.AppendToOutgoingContext(ctx, "x-approval-ticket", ticketID, "x-project-id", projectID)
+		resp, err := client.SubmitJob(submitCtx, &pb.SubmitJobRequest{
+			CacheKey:       cacheKey,
+			Toolchain:      string(apitypes.ToolchainAndroid),
+			Runner:         string(apitypes.RunnerHost),
+			SourceMode:     string(apitypes.SourceModeWorkspace),
+			SnapshotRef:    snapshotRef,
+			CommandArgs:    []string{gradleTask},
+			ProjectId:      projectID,
+			ApprovalTicket: ticketID,
+		})
+		if err != nil {
+			return errorResult("Submit build job failed: " + err.Error())
+		}
+		logContent, execErr := s.collectJobLogs(ctx, client, resp.JobId, params.Meta.ProgressToken)
+		if execErr != nil {
+			return CallToolResult{
+				Content: []TextContent{
+					{Type: "text", Text: fmt.Sprintf("Android build FAILED (job: %s):\n%s\nError: %v", resp.JobId, logContent, execErr)},
+				},
+				IsError: true,
+			}
+		}
+
+		apkPath, findErr := android.FindAPK(dir, variant)
+		if findErr == nil {
+			adb := android.NewExecADBClient()
+			if installErr := adb.Install(ctx, serial, apkPath); installErr == nil {
+				if pkgName != "" {
+					target := pkgName + "/" + activity
+					out, launchErr := adb.Shell(ctx, serial, "am", "start", "-n", target)
+					if launchErr == nil {
+						return textResult(fmt.Sprintf("Application built, installed, and launched successfully: %s\n%s", target, out))
+					}
+					return textResult(fmt.Sprintf("Application installed, but launch failed: %v\n%s", launchErr, out))
+				}
+				return textResult(fmt.Sprintf("Application built and installed from %s", apkPath))
+			}
+		}
+
+		if subspaceID != "" {
+			remoteSerial := ""
+			if serial != "" {
+				remoteSerial = "-s " + serial + " "
+			}
+			installCmd := fmt.Sprintf("adb %sinstall -r app/build/outputs/apk/%s/*.apk", remoteSerial, variant)
+			_, _ = s.execRemote(ctx, conn, "bash", "-c", installCmd)
+			if pkgName != "" {
+				target := pkgName + "/" + activity
+				shCmd := fmt.Sprintf("adb %sshell am start -n %s", remoteSerial, target)
+				launchOut, _ := s.execRemote(ctx, conn, "bash", "-c", shCmd)
+				return textResult(fmt.Sprintf("Application built, installed, and launched on subspace %s: %s\n%s", subspaceID, target, launchOut))
+			}
+		}
+		return textResult(fmt.Sprintf("Android build completed (job: %s):\n%s", resp.JobId, logContent))
+
+	case "packets_android_logcat":
+		subspaceID, _ := params.Arguments["subspace_id"].(string)
+		serial, _ := params.Arguments["serial"].(string)
+		tag, _ := params.Arguments["tag"].(string)
+		pkg, _ := params.Arguments["package"].(string)
+		linesCount := 100
+		if l, ok := params.Arguments["lines"].(float64); ok && l > 0 {
+			linesCount = int(l)
+		}
+
+		logcatArgs := []string{"logcat", "-d", "-t", fmt.Sprintf("%d", linesCount)}
+		if tag != "" {
+			logcatArgs = append(logcatArgs, "-s", tag)
+		}
+
+		if subspaceID != "" {
+			conn, err := s.dialScheduler(ctx)
+			if err != nil {
+				return errorResult("Connect to Packets daemon failed: " + err.Error())
+			}
+			if s.conn == nil {
+				defer func() { _ = conn.Close() }()
+			}
+			if err := s.validateSubspace(ctx, conn, subspaceID); err != nil {
+				return errorResult(err.Error())
+			}
+			remoteCmd := []string{"adb"}
+			if serial != "" {
+				remoteCmd = append(remoteCmd, "-s", serial)
+			}
+			remoteCmd = append(remoteCmd, logcatArgs...)
+			out, err := s.execRemote(ctx, conn, remoteCmd...)
+			if err != nil {
+				return errorResult("Remote logcat failed: " + err.Error())
+			}
+			return textResult(out)
+		}
+
+		adbArgs := []string{}
+		if serial != "" {
+			adbArgs = append(adbArgs, "-s", serial)
+		}
+		adbArgs = append(adbArgs, logcatArgs...)
+		cmd := exec.CommandContext(ctx, android.ResolveADBPath(), adbArgs...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			conn, connErr := s.dialScheduler(ctx)
+			if connErr == nil {
+				if s.conn == nil {
+					defer func() { _ = conn.Close() }()
+				}
+				remoteCmd := []string{"adb"}
+				if serial != "" {
+					remoteCmd = append(remoteCmd, "-s", serial)
+				}
+				remoteCmd = append(remoteCmd, logcatArgs...)
+				if remOut, remErr := s.execRemote(ctx, conn, remoteCmd...); remErr == nil {
+					out = []byte(remOut)
+					err = nil
+				}
+			}
+		}
+		if err != nil {
+			return errorResult(fmt.Sprintf("ADB logcat failed: %v (%s)", err, string(out)))
+		}
+		res := string(out)
+		if pkg != "" {
+			var filtered []string
+			for _, line := range strings.Split(res, "\n") {
+				if strings.Contains(line, pkg) {
+					filtered = append(filtered, line)
+				}
+			}
+			res = strings.Join(filtered, "\n")
+		}
+		return textResult(res)
+
+	case "packets_android_install":
+		apkPath, _ := params.Arguments["apk_path"].(string)
+		if apkPath == "" {
+			return errorResult("apk_path is required")
+		}
+		serial, _ := params.Arguments["serial"].(string)
+		subspaceID, _ := params.Arguments["subspace_id"].(string)
+		ticketID, _ := params.Arguments["approval_ticket"].(string)
+		projectID := project.ResolveProjectID(dir)
+
+		ec := policy.ExecutionContext{
+			User:         "default",
+			ProjectID:    projectID,
+			WorkspaceID:  projectID,
+			SnapshotHash: "",
+			Command:      "android_install",
+			Args:         []string{apkPath, serial},
+			Action:       "EXEC",
+		}
+
+		if s.policy != nil && s.policy.RequiresApprovalFor(ec) {
+			if ticketID == "" {
+				pending, err := s.policy.CreatePendingApproval(ec)
+				if err != nil {
+					return errorResult(fmt.Sprintf("Failed creating approval: %v", err))
+				}
+				return CallToolResult{
+					Content: []TextContent{
+						{
+							Type: "text",
+							Text: fmt.Sprintf("APPROVAL_REQUIRED: Human approval is required before installing APK.\n"+
+								"Pending Request ID: %s\n"+
+								"Action: EXEC\n"+
+								"APK: %s\n"+
+								"Serial: %s\n\n"+
+								"Approve via 'packets_approve' (or CLI 'packets approve %s'). Then retry with {\"approval_ticket\": \"<ticket>\"}.",
+								pending.ID, apkPath, serial, pending.ID),
+						},
+					},
+					IsError: true,
+				}
+			}
+		}
+
+		adb := android.NewExecADBClient()
+		if err := adb.Install(ctx, serial, apkPath); err == nil {
+			return textResult(fmt.Sprintf("APK installed successfully on %s: %s", serial, apkPath))
+		}
+
+		conn, err := s.dialScheduler(ctx)
+		if err != nil {
+			return errorResult("Connect to Packets daemon failed: " + err.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		if subspaceID != "" {
+			if err := s.validateSubspace(ctx, conn, subspaceID); err != nil {
+				return errorResult(err.Error())
+			}
+		}
+		installCmd := []string{"adb"}
+		if serial != "" {
+			installCmd = append(installCmd, "-s", serial)
+		}
+		installCmd = append(installCmd, "install", "-r", apkPath)
+		logs, err := s.execRemote(ctx, conn, installCmd...)
+		if err != nil {
+			return errorResult("Failed to install APK: " + err.Error() + "\n" + logs)
+		}
+		return textResult(fmt.Sprintf("APK installed on remote node (serial: %s):\n%s", serial, logs))
+
+	case "packets_android_shell":
+		cmdStr, _ := params.Arguments["command"].(string)
+		if cmdStr == "" {
+			return errorResult("command is required")
+		}
+		serial, _ := params.Arguments["serial"].(string)
+		subspaceID, _ := params.Arguments["subspace_id"].(string)
+		ticketID, _ := params.Arguments["approval_ticket"].(string)
+		projectID := project.ResolveProjectID(dir)
+
+		ec := policy.ExecutionContext{
+			User:         "default",
+			ProjectID:    projectID,
+			WorkspaceID:  projectID,
+			SnapshotHash: "",
+			Command:      "android_shell",
+			Args:         []string{cmdStr, serial},
+			Action:       "EXEC",
+		}
+
+		if s.policy != nil && s.policy.RequiresApprovalFor(ec) {
+			if ticketID == "" {
+				pending, err := s.policy.CreatePendingApproval(ec)
+				if err != nil {
+					return errorResult(fmt.Sprintf("Failed creating approval: %v", err))
+				}
+				return CallToolResult{
+					Content: []TextContent{
+						{
+							Type: "text",
+							Text: fmt.Sprintf("APPROVAL_REQUIRED: Human approval is required before running Android shell command.\n"+
+								"Pending Request ID: %s\n"+
+								"Action: EXEC\n"+
+								"Command: %s\n"+
+								"Serial: %s\n\n"+
+								"Approve via 'packets_approve' (or CLI 'packets approve %s'). Then retry with {\"approval_ticket\": \"<ticket>\"}.",
+								pending.ID, cmdStr, serial, pending.ID),
+						},
+					},
+					IsError: true,
+				}
+			}
+		}
+
+		adb := android.NewExecADBClient()
+		out, err := adb.Shell(ctx, serial, cmdStr)
+		if err == nil {
+			return textResult(out)
+		}
+
+		conn, connErr := s.dialScheduler(ctx)
+		if connErr != nil {
+			return errorResult("ADB shell failed: " + err.Error() + "\nConnect to daemon failed: " + connErr.Error())
+		}
+		if s.conn == nil {
+			defer func() { _ = conn.Close() }()
+		}
+		if subspaceID != "" {
+			if err := s.validateSubspace(ctx, conn, subspaceID); err != nil {
+				return errorResult(err.Error())
+			}
+		}
+		remoteCmd := []string{"adb"}
+		if serial != "" {
+			remoteCmd = append(remoteCmd, "-s", serial)
+		}
+		remoteCmd = append(remoteCmd, "shell", cmdStr)
+		remOut, remErr := s.execRemote(ctx, conn, remoteCmd...)
+		if remErr != nil {
+			return errorResult("Remote ADB shell failed: " + remErr.Error() + "\n" + remOut)
+		}
+		return textResult(remOut)
+
 	default:
 		return errorResult(fmt.Sprintf("Unknown tool: %s", params.Name))
 	}
@@ -1581,4 +2116,42 @@ func errorResult(msg string) CallToolResult {
 		Content: []TextContent{{Type: "text", Text: msg}},
 		IsError: true,
 	}
+}
+
+func (s *Server) validateSubspace(ctx context.Context, conn *grpc.ClientConn, subspaceID string) error {
+	if subspaceID == "" {
+		return nil
+	}
+	subClient := pb.NewSubspaceServiceClient(conn)
+	subResp, err := subClient.GetSubspace(ctx, &pb.GetSubspaceRequest{Id: subspaceID})
+	if err != nil {
+		return fmt.Errorf("resolve subspace %s: %w", subspaceID, err)
+	}
+	if subResp.Subspace.State == "sleeping" {
+		wakeResp, wakeErr := subClient.WakeSubspace(ctx, &pb.WakeSubspaceRequest{Id: subspaceID})
+		if wakeErr != nil {
+			return fmt.Errorf("auto-wake subspace %s: %w", subspaceID, wakeErr)
+		}
+		subResp = wakeResp
+	}
+	if subResp.Subspace.State != "ready" && subResp.Subspace.State != "busy" {
+		return fmt.Errorf("subspace %s is not ready (state: %s)", subspaceID, subResp.Subspace.State)
+	}
+	return nil
+}
+
+func (s *Server) execRemote(ctx context.Context, conn *grpc.ClientConn, args ...string) (string, error) {
+	client := pb.NewSchedulerClient(conn)
+	cacheKey := fmt.Sprintf("exec:mcp-remote:%d", time.Now().UnixNano())
+	resp, err := client.SubmitJob(ctx, &pb.SubmitJobRequest{
+		CacheKey:    cacheKey,
+		Toolchain:   string(apitypes.ToolchainExec),
+		Runner:      string(apitypes.RunnerHost),
+		CommandArgs: args,
+		SourceMode:  string(apitypes.SourceModeWorkspace),
+	})
+	if err != nil {
+		return "", err
+	}
+	return s.collectJobLogs(ctx, client, resp.JobId, nil)
 }

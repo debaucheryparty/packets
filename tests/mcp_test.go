@@ -164,8 +164,8 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		t.Fatalf("Unmarshal list response: %v", err)
 	}
 
-	if len(listResp.Result.Tools) != 28 {
-		t.Errorf("expected 28 tools, got %d", len(listResp.Result.Tools))
+	if len(listResp.Result.Tools) != 34 {
+		t.Errorf("expected 34 tools, got %d", len(listResp.Result.Tools))
 	}
 
 	expectedTools := map[string]bool{
@@ -197,6 +197,12 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 		"packets_transaction_rollback": false,
 		"packets_devfile_get":          false,
 		"packets_devfile_validate":     false,
+		"packets_android_devices":      false,
+		"packets_android_screenshot":   false,
+		"packets_android_run":          false,
+		"packets_android_logcat":       false,
+		"packets_android_install":      false,
+		"packets_android_shell":        false,
 	}
 
 	for _, tool := range listResp.Result.Tools {
@@ -524,5 +530,47 @@ ports:
 	}
 	if !strings.Contains(res.Content[0].Text, "Valid devfile") {
 		t.Errorf("unexpected validation output: %s", res.Content[0].Text)
+	}
+}
+
+func TestMCPServer_AndroidTools(t *testing.T) {
+	pe := policy.NewPolicyEngine(policy.ApprovalAlways)
+	server, _, cleanup := setupMCPTestServer(t, pe)
+	defer cleanup()
+
+	resDev := callMCPTool(t, server, "packets_android_devices", map[string]interface{}{})
+	if resDev.IsError {
+		t.Logf("devices returned error (expected if no adb daemon): %s", resDev.Content[0].Text)
+	}
+
+	resRun := callMCPTool(t, server, "packets_android_run", map[string]interface{}{
+		"package":  "com.example.app",
+		"activity": ".MainActivity",
+	})
+	if !resRun.IsError {
+		t.Fatalf("expected packets_android_run to require approval")
+	}
+	if !strings.Contains(resRun.Content[0].Text, "APPROVAL_REQUIRED") {
+		t.Fatalf("expected APPROVAL_REQUIRED in output, got: %s", resRun.Content[0].Text)
+	}
+
+	resInstall := callMCPTool(t, server, "packets_android_install", map[string]interface{}{
+		"apk_path": "app.apk",
+	})
+	if !resInstall.IsError {
+		t.Fatalf("expected packets_android_install to require approval")
+	}
+	if !strings.Contains(resInstall.Content[0].Text, "APPROVAL_REQUIRED") {
+		t.Fatalf("expected APPROVAL_REQUIRED in output, got: %s", resInstall.Content[0].Text)
+	}
+
+	resShell := callMCPTool(t, server, "packets_android_shell", map[string]interface{}{
+		"command": "getprop ro.build.version.release",
+	})
+	if !resShell.IsError {
+		t.Fatalf("expected packets_android_shell to require approval")
+	}
+	if !strings.Contains(resShell.Content[0].Text, "APPROVAL_REQUIRED") {
+		t.Fatalf("expected APPROVAL_REQUIRED in output, got: %s", resShell.Content[0].Text)
 	}
 }
