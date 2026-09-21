@@ -15,48 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	ansiReset = "\033[0m"
-	ansiBold  = "\033[1m"
-	ansiCream = "\033[38;2;234;219;182m"
-	ansiSage  = "\033[38;2;127;169;155m"
-	ansiCoral = "\033[38;2;255;77;54m"
-	ansiRose  = "\033[38;2;199;130;131m"
-	ansiTaupe = "\033[38;2;115;104;94m"
-)
-
-func shouldColor() bool {
-	return os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
-}
-
-func style(text, code string) string {
-	if !shouldColor() {
-		return text
-	}
-	return code + text + ansiReset
-}
-
-func formatEndpoint(port string) string {
-	port = strings.TrimSpace(port)
-	if port == "" {
-		return ""
-	}
-	if strings.Contains(port, ":") {
-		parts := strings.Split(port, ":")
-		if parts[0] != "" {
-			if strings.HasPrefix(parts[0], ":") {
-				return parts[0]
-			}
-			return ":" + parts[0]
-		}
-		return port
-	}
-	if !strings.HasPrefix(port, ":") {
-		return ":" + port
-	}
-	return port
-}
-
 func NewSubspaceCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "subspace",
@@ -113,12 +71,12 @@ func newSubspaceCreateCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command
 			}
 
 			sub := resp.Subspace
-			fmt.Println(style("✓ Subspace created successfully", ansiSage))
-			fmt.Printf("  %s %s\n", style("ID:         ", ansiTaupe), style(sub.Id, ansiCoral))
-			fmt.Printf("  %s %s\n", style("Project:    ", ansiTaupe), style(sub.ProjectId, ansiCream))
-			fmt.Printf("  %s %s\n", style("Worker:     ", ansiTaupe), style(sub.WorkerId, ansiCream))
-			fmt.Printf("  %s %s\n", style("Environment:", ansiTaupe), style(sub.EnvironmentId, ansiCream))
-			fmt.Printf("  %s %s\n", style("State:      ", ansiTaupe), style(sub.State, ansiSage))
+			fmt.Println("Subspace created successfully")
+			fmt.Printf("  ID:          %s\n", sub.Id)
+			fmt.Printf("  Project:     %s\n", sub.ProjectId)
+			fmt.Printf("  Worker:      %s\n", sub.WorkerId)
+			fmt.Printf("  Environment: %s\n", sub.EnvironmentId)
+			fmt.Printf("  State:       %s\n", sub.State)
 			return nil
 		},
 	}
@@ -167,23 +125,11 @@ func newSubspaceListCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-			_, _ = fmt.Fprintln(w, style("SUBSPACE ID\tPROJECT\tWORKER\tSTATE\tCREATED\tLAST USED", ansiBold+ansiCream))
+			_, _ = fmt.Fprintln(w, "SUBSPACE ID\tPROJECT\tWORKER\tSTATE\tCREATED\tLAST USED")
 
 			for _, s := range resp.Subspaces {
-				stColor := ansiSage
-				switch strings.ToUpper(s.State) {
-				case "SLEEPING", "DESTROYED", "FAILED":
-					stColor = ansiRose
-				case "BUSY", "CREATING":
-					stColor = ansiCoral
-				}
 				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-					style(s.Id, ansiCoral),
-					style(s.ProjectId, ansiCream),
-					style(s.WorkerId, ansiCream),
-					style(s.State, stColor),
-					style(s.CreatedAt, ansiTaupe),
-					style(s.LastUsedAt, ansiTaupe))
+					s.Id, s.ProjectId, s.WorkerId, s.State, s.CreatedAt, s.LastUsedAt)
 			}
 			return w.Flush()
 		},
@@ -216,27 +162,19 @@ func newSubspaceStatusCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command
 			}
 
 			sub := resp.Subspace
-			stateColor := ansiSage
-			switch strings.ToUpper(sub.State) {
-			case "SLEEPING", "DESTROYED", "FAILED":
-				stateColor = ansiRose
-			case "BUSY", "CREATING":
-				stateColor = ansiCoral
-			}
-
-			fmt.Printf("  %s %s\n", style("Subspace:   ", ansiTaupe), style(sub.Id, ansiCoral))
-			fmt.Printf("  %s %s\n", style("Project:    ", ansiTaupe), style(sub.ProjectId, ansiCream))
-			fmt.Printf("  %s %s\n", style("Owner:      ", ansiTaupe), style(sub.OwnerId, ansiCream))
-			fmt.Printf("  %s %s\n", style("Worker:     ", ansiTaupe), style(sub.WorkerId, ansiCream))
-			fmt.Printf("  %s %s\n", style("Workspace:  ", ansiTaupe), style(sub.WorkspaceId, ansiCream))
-			fmt.Printf("  %s %s\n", style("Environment:", ansiTaupe), style(sub.EnvironmentId, ansiCream))
-			fmt.Printf("  %s %s\n", style("State:      ", ansiTaupe), style(sub.State, stateColor))
-			fmt.Printf("  %s %s\n", style("Created:    ", ansiTaupe), style(sub.CreatedAt, ansiTaupe))
-			fmt.Printf("  %s %s\n", style("Last Used:  ", ansiTaupe), style(sub.LastUsedAt, ansiTaupe))
+			fmt.Printf("Subspace:    %s\n", sub.Id)
+			fmt.Printf("Project:     %s\n", sub.ProjectId)
+			fmt.Printf("Owner:       %s\n", sub.OwnerId)
+			fmt.Printf("Worker:      %s\n", sub.WorkerId)
+			fmt.Printf("Workspace:   %s\n", sub.WorkspaceId)
+			fmt.Printf("Environment: %s\n", sub.EnvironmentId)
+			fmt.Printf("State:       %s\n", sub.State)
+			fmt.Printf("Created:     %s\n", sub.CreatedAt)
+			fmt.Printf("Last Used:   %s\n", sub.LastUsedAt)
 			if len(sub.Metadata) > 0 {
-				fmt.Println(style("Metadata:", ansiTaupe))
+				fmt.Println("Metadata:")
 				for k, v := range sub.Metadata {
-					fmt.Printf("  %s %s\n", style(k+":", ansiTaupe), style(v, ansiCream))
+					fmt.Printf("  %s: %s\n", k, v)
 				}
 			}
 
@@ -250,21 +188,14 @@ func newSubspaceStatusCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command
 					}
 				}
 
-				fmt.Printf("\n%s\n", style("Services:", ansiBold+ansiCream))
+				fmt.Printf("\nServices:\n")
 				for _, s := range svcResp.Services {
-					statusColor := ansiSage
-					switch strings.ToUpper(s.Status) {
-					case "STOPPED", "FAILED":
-						statusColor = ansiRose
-					case "STARTING", "BUSY":
-						statusColor = ansiCoral
-					}
 					pad := maxLen - len(s.Name)
 					if pad < 0 {
 						pad = 0
 					}
 					paddedName := s.Name + strings.Repeat(" ", pad)
-					fmt.Printf("  %s  %s\n", style(paddedName, ansiCream), style(s.Status, statusColor))
+					fmt.Printf("  %s  %s\n", paddedName, strings.ToUpper(s.Status))
 				}
 
 				type endpointItem struct {
@@ -282,14 +213,14 @@ func newSubspaceStatusCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command
 				}
 
 				if len(endpoints) > 0 {
-					fmt.Printf("\n%s\n", style("Endpoints:", ansiBold+ansiCream))
+					fmt.Printf("\nEndpoints:\n")
 					for _, ep := range endpoints {
 						pad := maxLen - len(ep.name)
 						if pad < 0 {
 							pad = 0
 						}
 						paddedName := ep.name + strings.Repeat(" ", pad)
-						fmt.Printf("  %s  %s\n", style(paddedName, ansiCream), style(ep.port, ansiSage))
+						fmt.Printf("  %s  %s\n", paddedName, ep.port)
 					}
 				}
 			}
@@ -297,6 +228,27 @@ func newSubspaceStatusCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command
 			return nil
 		},
 	}
+}
+
+func formatEndpoint(port string) string {
+	port = strings.TrimSpace(port)
+	if port == "" {
+		return ""
+	}
+	if strings.Contains(port, ":") {
+		parts := strings.Split(port, ":")
+		if parts[0] != "" {
+			if strings.HasPrefix(parts[0], ":") {
+				return parts[0]
+			}
+			return ":" + parts[0]
+		}
+		return port
+	}
+	if !strings.HasPrefix(port, ":") {
+		return ":" + port
+	}
+	return port
 }
 
 func newSubspaceSleepCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
@@ -321,7 +273,7 @@ func newSubspaceSleepCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command 
 				if err != nil {
 					return fmt.Errorf("sleep subspace %s: %w", args[0], err)
 				}
-				fmt.Println(style(fmt.Sprintf("✓ Subspace %s is now sleeping", resp.Subspace.Id), ansiRose))
+				fmt.Printf("Subspace %s is now sleeping\n", resp.Subspace.Id)
 				return nil
 			}
 
@@ -352,7 +304,7 @@ func newSubspaceSleepCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command 
 				if now.Sub(lastUsed) >= d {
 					resp, err := client.SleepSubspace(ctx, &pb.SleepSubspaceRequest{Id: s.Id})
 					if err == nil {
-						fmt.Println(style(fmt.Sprintf("✓ Subspace %s is now sleeping (idle for %s)", resp.Subspace.Id, now.Sub(lastUsed).Round(time.Second)), ansiRose))
+						fmt.Printf("Subspace %s is now sleeping (idle for %s)\n", resp.Subspace.Id, now.Sub(lastUsed).Round(time.Second))
 						sleptCount++
 					}
 				}
@@ -388,7 +340,7 @@ func newSubspaceWakeCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 				return fmt.Errorf("wake subspace %s: %w", args[0], err)
 			}
 
-			fmt.Println(style(fmt.Sprintf("✓ Subspace %s is now ready", resp.Subspace.Id), ansiSage))
+			fmt.Printf("Subspace %s is now ready\n", resp.Subspace.Id)
 			return nil
 		},
 	}
@@ -413,7 +365,7 @@ func newSubspaceDestroyCommand(cfg *config.Config, _ *slog.Logger) *cobra.Comman
 				return fmt.Errorf("destroy subspace %s: %w", args[0], err)
 			}
 
-			fmt.Println(style(fmt.Sprintf("✓ Subspace %s destroyed", args[0]), ansiCoral))
+			fmt.Printf("Subspace %s destroyed\n", args[0])
 			return nil
 		},
 	}
