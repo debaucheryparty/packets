@@ -41,13 +41,35 @@ Or install directly with Go:
 go install github.com/debaucheryparty/packets/cmd/packets@latest
 ```
 
-### Executing program
-
-* Set your remote server address:
+Or build from source:
 ```bash
-export PACKETS_SERVER_ADDR="vps.example.com:50051"
+git clone https://github.com/debaucheryparty/packets.git
+cd packets
+go build -o packets ./cmd/packets
+go build -o packetsd ./cmd/packetsd
+```
+
+### Setup
+
+1. **Start the daemon** on your remote machine (VPS or desktop):
+```bash
+export SCHEDULER_GRPC_PORT=50051
+./packetsd
+```
+
+2. **Point your local client** to the remote host:
+```bash
+export PACKETS_SERVER_ADDR="your-remote-host:50051"
 packets status
 ```
+
+3. **Initialize your project**:
+```bash
+cd your-project
+packets init
+```
+
+### Executing program
 
 * Run a remote build (auto-detects project type, uploads changes, downloads outputs):
 ```bash
