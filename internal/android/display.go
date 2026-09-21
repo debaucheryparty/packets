@@ -40,13 +40,14 @@ type DisplayBackend interface {
 	Status(ctx context.Context) (DisplayStatus, error)
 }
 type DisplayOpts struct {
-	ADBHost    string
-	ADBPort    int
-	Serial     string
-	MaxSizePx  int
-	BitrateBps int
-	MaxFPS     int
-	Stderr     io.Writer
+	ADBHost     string
+	ADBPort     int
+	Serial      string
+	WindowTitle string
+	MaxSizePx   int
+	BitrateBps  int
+	MaxFPS      int
+	Stderr      io.Writer
 }
 
 type ScrcpyDisplayBackend struct {
@@ -64,10 +65,13 @@ func (s *ScrcpyDisplayBackend) Start(ctx context.Context, opts DisplayOpts) erro
 		port = 5037
 	}
 
-	args := []string{
-		"--serial", opts.Serial,
+	var args []string
+	if opts.Serial != "" {
+		args = append(args, "--serial", opts.Serial)
 	}
-
+	if opts.WindowTitle != "" {
+		args = append(args, "--window-title", opts.WindowTitle)
+	}
 	if opts.MaxSizePx > 0 {
 		args = append(args, "--max-size", fmt.Sprintf("%d", opts.MaxSizePx))
 	}
@@ -77,10 +81,13 @@ func (s *ScrcpyDisplayBackend) Start(ctx context.Context, opts DisplayOpts) erro
 	if opts.MaxFPS > 0 {
 		args = append(args, "--max-fps", fmt.Sprintf("%d", opts.MaxFPS))
 	}
+
 	s.cmd = exec.CommandContext(ctx, "scrcpy", args...)
-	s.cmd.Env = append(s.cmd.Environ(),
-		fmt.Sprintf("ADB_SERVER_SOCKET=tcp:%s:%d", opts.ADBHost, port),
-	)
+	if opts.ADBHost != "" && opts.ADBHost != "127.0.0.1" && opts.ADBHost != "localhost" && port == 5037 {
+		s.cmd.Env = append(s.cmd.Environ(),
+			fmt.Sprintf("ADB_SERVER_SOCKET=tcp:%s:%d", opts.ADBHost, port),
+		)
+	}
 	if opts.Stderr != nil {
 		s.cmd.Stderr = opts.Stderr
 	}
