@@ -688,6 +688,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 		Short: "Start the Android emulator",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
 			avd, _ := cmd.Flags().GetString("avd")
 			cores, _ := cmd.Flags().GetInt("cores")
 			ram, _ := cmd.Flags().GetInt("ram")
@@ -695,6 +696,18 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			snapshot, _ := cmd.Flags().GetString("snapshot")
 			noSnapshotLoad, _ := cmd.Flags().GetBool("no-snapshot-load")
 			remoteFlag, _ := cmd.Flags().GetBool("remote")
+
+			if subspaceFlag != "" {
+				conn, err := DialScheduler(ctx, cfg)
+				if err != nil {
+					return fmt.Errorf("connect to packetsd: %w", err)
+				}
+				defer func() { _ = conn.Close() }()
+				if err := validateSubspaceTarget(ctx, conn, subspaceFlag, logger); err != nil {
+					return err
+				}
+				remoteFlag = true
+			}
 
 			startRemote := func() error {
 				fmt.Printf("Starting emulator %s on remote node...\n", avd)
@@ -704,6 +717,33 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 						fmt.Printf("Emulator already running (%s)\n", d.Serial)
 						return nil
 					}
+				}
+
+				avdList, _ := execRemoteCommand(ctx, cfg, "avdmanager", "list", "avd", "-c")
+				hasAVD := false
+				for _, a := range avdList {
+					if strings.TrimSpace(a) == avd {
+						hasAVD = true
+						break
+					}
+				}
+
+				if !hasAVD {
+					fmt.Printf("AVD %s not found on remote node. Automatically creating...\n", avd)
+					apiLevel := 34
+					autoCreateScript := fmt.Sprintf(`
+export ANDROID_HOME="${HOME}/android-sdk"
+export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${PATH}"
+if ! sdkmanager --list_installed 2>/dev/null | grep -q "system-images;android-%d;google_apis;x86_64"; then
+    echo "Downloading system image android-%d..."
+    yes | sdkmanager "system-images;android-%d;google_apis;x86_64" "platforms;android-%d" >/dev/null 2>&1
+fi
+echo "no" | avdmanager create avd -n "%s" -k "system-images;android-%d;google_apis;x86_64" --force
+`, apiLevel, apiLevel, apiLevel, apiLevel, avd, apiLevel)
+					if err := streamRemoteCommand(ctx, cfg, os.Stdout, "bash", "-c", autoCreateScript); err != nil {
+						return fmt.Errorf("auto-create avd %s: %w", avd, err)
+					}
+					fmt.Printf("AVD %s created successfully\n", avd)
 				}
 
 				startSh := fmt.Sprintf("nohup emulator -avd %s -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-metrics > /tmp/emulator.log 2>&1 &", avd)
@@ -756,6 +796,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			return nil
 		},
 	}
+	startCmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	startCmd.Flags().String("avd", "Pixel_8_API_34", "AVD name to start")
 	startCmd.Flags().Int("cores", 4, "Number of CPU cores")
 	startCmd.Flags().Int("ram", 4096, "RAM in MB")
@@ -768,8 +809,22 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 		Use:   "stop",
 		Short: "Stop the Android emulator",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
 			serial, _ := cmd.Flags().GetString("serial")
 			remoteFlag, _ := cmd.Flags().GetBool("remote")
+
+			if subspaceFlag != "" {
+				conn, err := DialScheduler(cmd.Context(), cfg)
+				if err != nil {
+					return fmt.Errorf("connect to packetsd: %w", err)
+				}
+				defer func() { _ = conn.Close() }()
+				if err := validateSubspaceTarget(cmd.Context(), conn, subspaceFlag, logger); err != nil {
+					return err
+				}
+				remoteFlag = true
+			}
+
 			fmt.Printf("Stopping %s...\n", serial)
 			if !remoteFlag {
 				if err := mgr.Stop(cmd.Context(), serial); err == nil {
@@ -784,6 +839,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			return nil
 		},
 	}
+	stopCmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	stopCmd.Flags().String("serial", "emulator-5554", "Device serial to stop")
 	stopCmd.Flags().Bool("remote", false, "Stop emulator on the remote node")
 
@@ -791,6 +847,18 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 		Use:   "status",
 		Short: "Show status of running emulators",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
+			if subspaceFlag != "" {
+				conn, err := DialScheduler(cmd.Context(), cfg)
+				if err != nil {
+					return fmt.Errorf("connect to packetsd: %w", err)
+				}
+				defer func() { _ = conn.Close() }()
+				if err := validateSubspaceTarget(cmd.Context(), conn, subspaceFlag, logger); err != nil {
+					return err
+				}
+			}
+
 			infos, err := mgr.List(cmd.Context())
 			if err != nil {
 				lines, remErr := execRemoteCommand(cmd.Context(), cfg, "adb", "devices")
@@ -823,6 +891,7 @@ func newAndroidEmulatorCommand(cfg *config.Config, logger *slog.Logger) *cobra.C
 			return nil
 		},
 	}
+	statusCmd.Flags().String("subspace", "", "Target remote Subspace ID")
 
 	avdsCmd := &cobra.Command{
 		Use:   "avds",
@@ -1373,14 +1442,26 @@ echo "AVDS: $(avdmanager list avd -c 2>&1 | tr '\n' ' ' || echo none)"
 	return cmd
 }
 
-func newAndroidSetupCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
+func newAndroidSetupCommand(cfg *config.Config, logger *slog.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Provision Android SDK, emulator, and system images on the node",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
+			subspaceFlag, _ := cmd.Flags().GetString("subspace")
 			avd, _ := cmd.Flags().GetString("avd")
 			api, _ := cmd.Flags().GetInt("api")
+
+			if subspaceFlag != "" {
+				conn, err := DialScheduler(ctx, cfg)
+				if err != nil {
+					return fmt.Errorf("connect to packetsd: %w", err)
+				}
+				defer func() { _ = conn.Close() }()
+				if err := validateSubspaceTarget(ctx, conn, subspaceFlag, logger); err != nil {
+					return err
+				}
+			}
 
 			fmt.Println("Provisioning Android SDK and emulator on remote node...")
 			script := android.GenerateSetupScript(avd, api)
@@ -1391,6 +1472,7 @@ func newAndroidSetupCommand(cfg *config.Config, _ *slog.Logger) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
 	cmd.Flags().String("avd", "Pixel_8_API_34", "Name of AVD to create")
 	cmd.Flags().Int("api", 34, "Android API level for SDK platform and system image")
 	return cmd
