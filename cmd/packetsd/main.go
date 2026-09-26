@@ -34,6 +34,17 @@ import (
 var version = "dev"
 
 func main() {
+	for _, arg := range os.Args[1:] {
+		if arg == "--help" || arg == "-h" {
+			printUsage()
+			return
+		}
+		if arg == "--version" || arg == "-v" {
+			fmt.Printf("packetsd %s\n", version)
+			return
+		}
+	}
+
 	ctx := context.Background()
 
 	cfg, err := config.LoadConfig(ctx)
@@ -241,4 +252,20 @@ func main() {
 		logger.Warn("shutdown timed out, forcing exit")
 		grpcServer.Stop()
 	}
+}
+
+func printUsage() {
+	fmt.Print(`packetsd - The central coordination scheduler daemon for Packets
+
+Usage:
+  packetsd [flags]
+
+Flags:
+  -h, --help            Show help for packetsd
+  -v, --version         Show packetsd version
+      --friend          Enable interactive console approvals on peer nodes
+      --auto-approve    Disable human approval prompts for incoming commands
+      --no-approval     Alias for --auto-approve
+      --trust-all       Alias for --auto-approve
+`)
 }
