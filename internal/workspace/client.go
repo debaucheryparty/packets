@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/debaucheryparty/packets/pkg/apitypes"
@@ -39,33 +40,110 @@ func UploadWorkspace(ctx context.Context, conn *grpc.ClientConn, dir string, for
 		return diffResp.ExistingSnapshotRef, nil
 	}
 
-	httpClient := &http.Client{Timeout: 5 * time.Minute}
+	hashIdx := buildHashIndex(manifest)
+	uniqueHashes := make([]string, 0, len(diffResp.MissingHashes))
+	seenUpload := make(map[string]bool, len(diffResp.MissingHashes))
+	for _, h := range diffResp.MissingHashes {
+		if !seenUpload[h] {
+			seenUpload[h] = true
+			uniqueHashes = append(uniqueHashes, h)
+		}
+	}
 
-	for _, hash := range diffResp.MissingHashes {
-		url := diffResp.PresignedPutUrls[hash]
-		if url == "" {
-			return "", fmt.Errorf("UploadWorkspace: no presigned URL for hash %s", hash[:8])
-		}
+	transport := &http.Transport{
+		MaxIdleConns:        64,
+		MaxIdleConnsPerHost: 32,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   5 * time.Minute,
+	}
 
-		data, err := readChunkByHash(dir, manifest, hash)
-		if err != nil {
-			return "", fmt.Errorf("UploadWorkspace read chunk %s: %w", hash[:8], err)
-		}
+	concurrency := 8
+	if len(uniqueHashes) < concurrency {
+		concurrency = len(uniqueHashes)
+	}
+	if concurrency <= 0 {
+		concurrency = 1
+	}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(data))
-		if err != nil {
-			return "", fmt.Errorf("UploadWorkspace build request %s: %w", hash[:8], err)
-		}
-		req.ContentLength = int64(len(data))
+	jobs := make(chan string, len(uniqueHashes))
+	for _, h := range uniqueHashes {
+		jobs <- h
+	}
+	close(jobs)
 
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			return "", fmt.Errorf("UploadWorkspace upload chunk %s: %w", hash[:8], err)
-		}
-		_ = resp.Body.Close()
-		if resp.StatusCode >= 300 {
-			return "", fmt.Errorf("UploadWorkspace upload chunk %s: status %d", hash[:8], resp.StatusCode)
-		}
+	errCh := make(chan error, concurrency)
+	var wg sync.WaitGroup
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for hash := range jobs {
+				select {
+				case <-ctx.Done():
+					select {
+					case errCh <- ctx.Err():
+					default:
+					}
+					return
+				default:
+				}
+
+				url := diffResp.PresignedPutUrls[hash]
+				if url == "" {
+					select {
+					case errCh <- fmt.Errorf("UploadWorkspace: no presigned URL for hash %s", hash[:8]):
+					default:
+					}
+					return
+				}
+
+				data, err := readChunkByHashFromIndex(dir, hashIdx, hash)
+				if err != nil {
+					select {
+					case errCh <- fmt.Errorf("UploadWorkspace read chunk %s: %w", hash[:8], err):
+					default:
+					}
+					return
+				}
+
+				req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(data))
+				if err != nil {
+					select {
+					case errCh <- fmt.Errorf("UploadWorkspace build request %s: %w", hash[:8], err):
+					default:
+					}
+					return
+				}
+				req.ContentLength = int64(len(data))
+
+				resp, err := httpClient.Do(req)
+				if err != nil {
+					select {
+					case errCh <- fmt.Errorf("UploadWorkspace upload chunk %s: %w", hash[:8], err):
+					default:
+					}
+					return
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode >= 300 {
+					select {
+					case errCh <- fmt.Errorf("UploadWorkspace upload chunk %s: status %d", hash[:8], resp.StatusCode):
+					default:
+					}
+					return
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	if err, ok := <-errCh; ok && err != nil {
+		return "", err
 	}
 
 	commitResp, err := client.Commit(ctx, &pb.CommitRequest{

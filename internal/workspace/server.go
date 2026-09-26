@@ -57,10 +57,12 @@ func (s *Server) Diff(ctx context.Context, req *pb.WorkspaceManifest) (*pb.DiffR
 
 	missing := make([]string, 0)
 	presignedURLs := make(map[string]string)
+	seen := make(map[string]bool)
 	for _, f := range req.Files {
-		if f.Hash == "" || f.IsDir {
+		if f.Hash == "" || f.IsDir || seen[f.Hash] {
 			continue
 		}
+		seen[f.Hash] = true
 		chunkKey := fmt.Sprintf("%s/chunks/%s", owner, f.Hash)
 		chunkExists, err := s.store.Exists(ctx, chunkKey)
 		if err != nil {

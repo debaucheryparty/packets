@@ -651,3 +651,31 @@ func TestScanWorkspace_GradlewCRLFNormalization(t *testing.T) {
 		t.Fatal("gradlew file not found in manifest")
 	}
 }
+
+func TestWorkspaceServer_DiffDeduplication(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	store, err := storage.NewDiskObjectStore(filepath.Join(tmpDir, "store"), "http://localhost")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := workspace.NewServer(store, toolchain.NewRegistry())
+
+	diffResp, err := srv.Diff(ctx, &pb.WorkspaceManifest{
+		RootHash: "test-root",
+		Files: []*pb.FileEntry{
+			{Path: "file1.txt", Hash: "common-hash", Size: 10, IsDir: false},
+			{Path: "file2.txt", Hash: "common-hash", Size: 10, IsDir: false},
+			{Path: "file3.txt", Hash: "unique-hash", Size: 20, IsDir: false},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Diff failed: %v", err)
+	}
+
+	if len(diffResp.MissingHashes) != 2 {
+		t.Errorf("expected 2 unique missing hashes, got %d (%v)", len(diffResp.MissingHashes), diffResp.MissingHashes)
+	}
+}
