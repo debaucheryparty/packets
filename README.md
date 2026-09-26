@@ -1,14 +1,31 @@
 # Packets
 
-Packets is a remote development platform that lets you use another machine for builds, tests, development environments, android devices, services, and other resource-heavy tasks. your local machine stays lightweight while packets handles the heavy work on remote machines.
+Packets is something i started building because my laptop is not really good at doing heavy development work
+
+The idea is to use another machine for the work that needs more resources, while keeping the editor and normal development on my laptop.
+
+It can be used for things like android/gradle builds, rust, go and other more languages projects, test, containers, services, remote commands, and other workflow that are better run on another machine.
 
 ## Description
+I do most of my coding on an older laptop with only 8gb of ram. Whenever I work on android apps with gradle, build rust crates, or run multiple tests, my laptop starts freezing and getting really slow.
 
-I do most of my coding on an older laptop with only 8 GB of RAM. Whenever I try to compile Android apps with Gradle, build Rust crates, or run test matrices, my whole machine freezes and lags.
+I built packets so I can use my laptop mainly for coding while the heavy work is done on another machine. The builds, container tasks, and tests run on an old desktop on my home network or on a remote vps.
 
-I built Packets so my laptop only has to be an editor. All the heavy compilation, container tasks, and testing happen on an old desktop on my home network or a remote VPS.
+Packets syncs the changes from my laptop, runs the build or tests on the remote machines, streams the output back to my terminal, and brings the built files back when it's done. It also keeps the build cache between runs, so I don't have to start everything from scratch every time.
 
-Packets only syncs the specific file chunks you edited, runs the build or tests remotely, streams output live to your terminal, brings the built binaries back to your folder, and keeps caches warm across runs so incremental builds stay fast.
+## How it works
+There are two main parts:
+- `packets` is the client i use locally.
+- `packetsd` runs on the machine that is doing the work.
+
+The client talks to the remote daemon and sends work to it.
+
+A normal build looks roughly like this:
+1. Suppose i change something locally.
+2. Packets syncs the required project changes to the remote machine.
+3. The remote worker runs the build.
+4. Build output is streamed back to the local terminal.
+5. The resulting files can be brought back to the local project.
 
 ### Screenshots
 
@@ -32,19 +49,16 @@ Packets only syncs the specific file chunks you edited, runs the build or tests 
 ### Installing
 
 Install the pre-built binary:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/debaucheryparty/packets/main/scripts/install.sh | bash
 ```
 
-Or install directly with Go:
-
+Or install it with Go:
 ```bash
 go install github.com/debaucheryparty/packets/cmd/packets@latest
 ```
 
-Or build from source:
-
+Or build it from source:
 ```bash
 git clone https://github.com/debaucheryparty/packets.git
 cd packets
@@ -54,22 +68,19 @@ go build -o packetsd ./cmd/packetsd
 
 ### Setup
 
-1. **Start the daemon** on your remote machine (VPS or desktop):
-
+1. **Start the daemon** on your remote machine:
 ```bash
 export SCHEDULER_GRPC_PORT=50051
 ./packetsd
 ```
 
-2. **Point your local client** to the remote host:
-
+2. Then **configure** the local client:
 ```bash
 export PACKETS_SERVER_ADDR="your-remote-host:50051"
 packets status
 ```
 
-3. **Initialize your project**:
-
+3. After the connection is working, **initialize** the project:
 ```bash
 cd your-project
 packets init
@@ -89,10 +100,14 @@ packets build --wait
 packets test
 ```
 
-* Keep build caches warm between runs with a persistent subspace:
-
+* Subspaces:
+Create a persistent workspace:
 ```bash
 packets subspace create --project my-app --worker vps-worker
+```
+
+Then build using it:
+```bash
 packets build --subspace sub-xxxxxx --wait
 ```
 
@@ -121,7 +136,14 @@ packets subspace shell sub-xxxxxx
 
 ## AI Usage
 
-I used AI as a development assistant throughout packets. I used it for debugging, exploring implementation approaches, understanding errors, reviewing code, and helping with development tasks. I also used AI while developing parts of the mcp/ai agent integration. I reviewed, tested, and made the final implementation decisions myself.
+I used ai while developing packets. I used it for debugging, understanding errors, exploring implementation options, reviewing code, and working on parts of Mcp and ai agent integration.
+
+I still test the changes myself and make the final decisions about what goes into the project.
+
+## Development
+
+**Packets is still a work in progress** and I am continuously working on it, testing different ideas, researching possible improvements, and trying to add things that make the project more useful.
+
 
 ## Help
 
@@ -137,7 +159,7 @@ View all available commands and flags:
 packets --help
 ```
 
-Detailed guides and architecture notes are available in the [docs/](./docs/README.md) folder.
+More documentation and architecture notes are available in [docs/](./docs/README.md).
 
 ## License
 
