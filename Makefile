@@ -5,15 +5,7 @@ build:
 	go build -ldflags "-s -w -X main.version=$$(git describe --tags --always --dirty)" -o bin/packetsd ./cmd/packetsd
 
 release:
-	GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o bin/packets-linux-amd64 ./cmd/packets
-	GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o bin/packets-linux-arm64 ./cmd/packets
-	GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o bin/packets-darwin-amd64 ./cmd/packets
-	GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o bin/packets-darwin-arm64 ./cmd/packets
-	# same for packetsd
-	GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o bin/packetsd-linux-amd64 ./cmd/packetsd
-	GOOS=linux GOARCH=arm64 go build -ldflags "-s -w" -o bin/packetsd-linux-arm64 ./cmd/packetsd
-	GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o bin/packetsd-darwin-amd64 ./cmd/packetsd
-	GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o bin/packetsd-darwin-arm64 ./cmd/packetsd
+	bash scripts/build_release.sh
 
 test:
 	go test ./... -race
