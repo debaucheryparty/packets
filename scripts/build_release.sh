@@ -39,16 +39,18 @@ for arch in amd64 arm64; do
   rm -rf "${TMP_DIR}"
 done
 
+ROOT_DIR="$(pwd)"
+
 echo "Building and packaging macOS tarballs (.tar.gz) and disk images (.dmg)..."
 for arch in amd64 arm64; do
   TMP_DIR=$(mktemp -d)
   GOOS=darwin GOARCH=${arch} go build -ldflags "${LDFLAGS}" -o "${TMP_DIR}/packets" ./cmd/packets
   tar -czf "bin/packets-darwin-${arch}.tar.gz" -C "${TMP_DIR}" packets
   if command -v zip >/dev/null 2>&1; then
-    (cd "${TMP_DIR}" && zip -q "${PWD}/bin/packets-darwin-${arch}.zip" packets)
+    (cd "${TMP_DIR}" && zip -q "${ROOT_DIR}/bin/packets-darwin-${arch}.zip" packets)
   fi
   if command -v genisoimage >/dev/null 2>&1; then
-    genisoimage -V "packets" -D -R -apple -no-pad -o "bin/packets-darwin-${arch}.dmg" "${TMP_DIR}" 2>/dev/null || true
+    genisoimage -V "packets" -D -R -apple -no-pad -o "${ROOT_DIR}/bin/packets-darwin-${arch}.dmg" "${TMP_DIR}" 2>/dev/null || true
   fi
   rm -rf "${TMP_DIR}"
 
@@ -56,10 +58,10 @@ for arch in amd64 arm64; do
   GOOS=darwin GOARCH=${arch} go build -ldflags "${LDFLAGS}" -o "${TMP_DIR}/packetsd" ./cmd/packetsd
   tar -czf "bin/packetsd-darwin-${arch}.tar.gz" -C "${TMP_DIR}" packetsd
   if command -v zip >/dev/null 2>&1; then
-    (cd "${TMP_DIR}" && zip -q "${PWD}/bin/packetsd-darwin-${arch}.zip" packetsd)
+    (cd "${TMP_DIR}" && zip -q "${ROOT_DIR}/bin/packetsd-darwin-${arch}.zip" packetsd)
   fi
   if command -v genisoimage >/dev/null 2>&1; then
-    genisoimage -V "packetsd" -D -R -apple -no-pad -o "bin/packetsd-darwin-${arch}.dmg" "${TMP_DIR}" 2>/dev/null || true
+    genisoimage -V "packetsd" -D -R -apple -no-pad -o "${ROOT_DIR}/bin/packetsd-darwin-${arch}.dmg" "${TMP_DIR}" 2>/dev/null || true
   fi
   rm -rf "${TMP_DIR}"
 done
