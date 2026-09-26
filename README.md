@@ -13,20 +13,6 @@ I built packets so I can use my laptop mainly for coding while the heavy work is
 
 Packets syncs the changes from my laptop, runs the build or tests on the remote machines, streams the output back to my terminal, and brings the built files back when it's done. It also keeps the build cache between runs, so I don't have to start everything from scratch every time.
 
-## How it works
-There are two main parts:
-- `packets` is the client i use locally.
-- `packetsd` runs on the machine that is doing the work.
-
-The client talks to the remote daemon and sends work to it.
-
-A normal build looks roughly like this:
-1. Suppose i change something locally.
-2. Packets syncs the required project changes to the remote machine.
-3. The remote worker runs the build.
-4. Build output is streamed back to the local terminal.
-5. The resulting files can be brought back to the local project.
-
 ### Screenshots
 
 **Peer fleet status & queue dashboard**
