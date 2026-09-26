@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +15,15 @@ import (
 
 	"github.com/debaucheryparty/packets/pkg/apitypes"
 )
+
+func isShellScript(path string) bool {
+	base := filepath.Base(path)
+	if base == "gradlew" || base == "mvnw" || base == "configure" {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(base))
+	return ext == ".sh" || ext == ".bash"
+}
 
 func normalizePath(p string) string {
 	return strings.ReplaceAll(p, "\\", "/")
@@ -107,6 +117,19 @@ func ScanWorkspace(dir string, extraIgnore []string) (*apitypes.WorkspaceManifes
 }
 
 func hashFile(path string) (string, int64, error) {
+	if isShellScript(path) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", 0, err
+		}
+		if bytes.Contains(data, []byte("\r\n")) {
+			data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+		}
+		h := sha256.New()
+		_, _ = h.Write(data)
+		return hex.EncodeToString(h.Sum(nil)), int64(len(data)), nil
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return "", 0, err

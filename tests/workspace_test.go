@@ -613,3 +613,41 @@ func TestWorkspaceServer_VerifySnapshot(t *testing.T) {
 		t.Errorf("expected root hash snap-abc-123, got %s", resp.RootHash)
 	}
 }
+
+func TestScanWorkspace_GradlewCRLFNormalization(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	crlfContent := []byte("#!/usr/bin/env sh\r\nexec java -jar gradle-wrapper.jar \"$@\"\r\n")
+	lfContent := []byte("#!/usr/bin/env sh\nexec java -jar gradle-wrapper.jar \"$@\"\n")
+
+	gradlewPath := filepath.Join(tmpDir, "gradlew")
+	if err := os.WriteFile(gradlewPath, crlfContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest, err := workspace.ScanWorkspace(tmpDir, nil)
+	if err != nil {
+		t.Fatalf("ScanWorkspace failed: %v", err)
+	}
+
+	found := false
+	for _, f := range manifest.Files {
+		if f.Path == "gradlew" {
+			found = true
+			if f.Size != int64(len(lfContent)) {
+				t.Errorf("expected gradlew size %d, got %d", len(lfContent), f.Size)
+			}
+			chunkData, err := workspace.ReadChunkByHash(tmpDir, manifest, f.Hash)
+			if err != nil {
+				t.Fatalf("ReadChunkByHash failed: %v", err)
+			}
+			if string(chunkData) != string(lfContent) {
+				t.Errorf("expected chunk data to be LF normalized, got %q", string(chunkData))
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatal("gradlew file not found in manifest")
+	}
+}

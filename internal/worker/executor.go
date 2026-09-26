@@ -174,10 +174,7 @@ func (e *Executor) Execute(ctx context.Context, job apitypes.Job) (apitypes.Exec
 		}
 
 		for _, wrapper := range []string{"gradlew", "mvnw"} {
-			wPath := filepath.Join(srcDir, wrapper)
-			if fi, err := os.Stat(wPath); err == nil && !fi.IsDir() && fi.Mode()&0o111 == 0 {
-				_ = os.Chmod(wPath, fi.Mode()|0o755)
-			}
+			sanitizeScriptFile(filepath.Join(srcDir, wrapper))
 		}
 
 		result, err := e.docker.Run(ctx, RunOpts{
@@ -251,16 +248,10 @@ func (e *Executor) executeHost(ctx context.Context, job apitypes.Job, srcDir str
 	}
 
 	if len(command) > 0 && !filepath.IsAbs(command[0]) {
-		candidate := filepath.Join(cleanedSrcDir, command[0])
-		if fi, err := os.Stat(candidate); err == nil && !fi.IsDir() && fi.Mode()&0o111 == 0 {
-			_ = os.Chmod(candidate, fi.Mode()|0o755)
-		}
+		sanitizeScriptFile(filepath.Join(cleanedSrcDir, command[0]))
 	}
 	for _, wrapper := range []string{"gradlew", "mvnw"} {
-		wPath := filepath.Join(cleanedSrcDir, wrapper)
-		if fi, err := os.Stat(wPath); err == nil && !fi.IsDir() && fi.Mode()&0o111 == 0 {
-			_ = os.Chmod(wPath, fi.Mode()|0o755)
-		}
+		sanitizeScriptFile(filepath.Join(cleanedSrcDir, wrapper))
 	}
 
 	e.logger.InfoContext(ctx, "executing on trusted host runner", slog.String("job_id", string(job.ID)), slog.String("src_dir", cleanedSrcDir))
@@ -501,4 +492,22 @@ func SanitizeHostEnvironment(baseEnv []string) []string {
 		}
 	}
 	return cleaned
+}
+
+func sanitizeScriptFile(path string) {
+	fi, err := os.Stat(path)
+	if err != nil || fi.IsDir() {
+		return
+	}
+	if fi.Mode()&0o111 == 0 {
+		_ = os.Chmod(path, fi.Mode()|0o755)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	if bytes.Contains(data, []byte("\r\n")) {
+		cleaned := bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+		_ = os.WriteFile(path, cleaned, fi.Mode()|0o755)
+	}
 }
