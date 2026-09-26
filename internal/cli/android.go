@@ -376,13 +376,18 @@ func newAndroidDevicesCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 				}
 			}
 
+			remoteFlag, _ := cmd.Flags().GetBool("remote")
 			adb := android.NewExecADBClient()
-			devices, err := adb.Devices(ctx)
-			if err != nil {
+			var devices []android.Device
+			var err error
+			if !remoteFlag {
+				devices, err = adb.Devices(ctx)
+			}
+			if remoteFlag || err != nil {
 				lines, remErr := execRemoteCommand(ctx, cfg, "adb", "devices")
 				if remErr == nil {
 					devices = android.ParseDevicesOutput(strings.Join(lines, "\n"))
-				} else {
+				} else if err != nil {
 					return fmt.Errorf("adb devices: %w", err)
 				}
 			}
@@ -398,6 +403,7 @@ func newAndroidDevicesCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 		},
 	}
 	cmd.Flags().String("subspace", "", "Target remote Subspace ID")
+	cmd.Flags().Bool("remote", false, "Query Android devices directly on remote node")
 	return cmd
 }
 
@@ -1431,6 +1437,7 @@ func newAndroidConnectCommand(cfg *config.Config, logger *slog.Logger) *cobra.Co
 				fmt.Printf("\nActive ADB devices:\n%s\n", string(devicesOut))
 			}
 			fmt.Println("Android Studio is now ready to detect and target this remote emulator.")
+			fmt.Println("Note: If port-forwarding via SSH or GitHub Codespaces, ensure both port 5554 (console) and port 5555 (ADB) are forwarded.")
 			return nil
 		},
 	}

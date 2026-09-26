@@ -98,7 +98,10 @@ When you run `packets build --subspace <id>`:
 
 ## Network Protocol & Endpoints
 
-All internal communication between `packets`, `packetsd`, and worker nodes uses gRPC over HTTP/2:
+All internal communication between `packets`, `packetsd`, and worker nodes uses gRPC over HTTP/2, HTTP, and ADB:
 
 - **`:50051` (gRPC)**: Core control plane. Handles `SubmitJob`, `StreamJobLogs`, `CreateSubspace`, `UploadChunk`, and worker heartbeat streams.
-- **`:9090` (HTTP)**: Health probes (`/healthz`, `/readyz`) and Prometheus metrics (`/metrics`).
+- **`:9090` (HTTP)**: Health probes (`/healthz`, `/readyz`), Prometheus metrics (`/metrics`), and local disk storage chunk downloads (`/storage/`).
+- **`:5554` (TCP)**: Android emulator console / telnet port for device status inspection and state commands.
+- **`:5555` (TCP)**: ADB daemon (adbd) port for remote device execution, scrcpy mirroring, and debugging.
+
