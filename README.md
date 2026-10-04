@@ -1,10 +1,7 @@
 # Packets
 
-Packets is something i started building because my laptop is not really good at doing heavy development work
+Packets is a remote development platform that lets you use another machine for builds, tests, development environments, android devices, services, and other resource heavy tasks. your local machine stays lightweight while packets handles the heavy work on remote machines
 
-The idea is to use another machine for the work that needs more resources, while keeping the editor and normal development on my laptop.
-
-It can be used for things like android/gradle builds, rust, go and other more languages projects, test, containers, services, remote commands, and other workflow that are better run on another machine.
 
 ## Description
 I do most of my coding on an older laptop with only 8gb of ram. Whenever I work on android apps with gradle, build rust crates, or run multiple tests, my laptop starts freezing and getting really slow.
